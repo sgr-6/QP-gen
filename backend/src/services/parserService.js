@@ -119,7 +119,7 @@ const splitTextIntoObjects = (text) => {
 const normalizeQuestion = async (raw) => {
   try {
     let questionText = raw.question || raw.Question || raw.rawText || Object.values(raw)[0];
-    let marks = raw.marks || raw.Marks || extractRegex(questionText, /\[?(\d+)\s*[mM]arks?\]?/);
+    let marks = raw.marks || raw.Marks || extractRegex(questionText, /\[?(\d+)\s*[mM]arks?\]?/) || extractRegex(questionText, /\s+(\d{1,2})$/);
     let btl = raw.btl || raw.BTL || extractRegex(questionText, /\[?(L[1-6])\]?/);
     let co = raw.co || raw.CO || extractRegex(questionText, /\[?(CO[1-5])\]?/);
 
@@ -155,7 +155,8 @@ const cleanText = (text) => {
   return text.replace(/\[?(L[1-6])\]?/gi, '')
              .replace(/\[?(CO[1-5])\]?/gi, '')
              .replace(/\[?(\d+)\s*[mM]arks?\]?/gi, '')
-             .replace(/^\d+\.\s*/, '')
+             .replace(/\s+\d{1,2}$/, '')
+             .replace(/^\d+[\.\s]+/, '')
              .trim();
 };
 
