@@ -11,6 +11,8 @@ export default function ExamDashboard() {
   const [generateTitle, setGenerateTitle] = useState('');
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [generateStatus, setGenerateStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
+  const [draftPaper, setDraftPaper] = useState<any>(null);
+  const [errorMessage, setErrorMessage] = useState('');
   
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,29 +46,22 @@ export default function ExamDashboard() {
   const handleGenerate = async () => {
     if (!generateTitle) return;
     setGenerateStatus('generating');
+    setErrorMessage('');
     
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const res = await axios.post(`${baseUrl}/api/download-pdf`, 
-        { courseTitle: generateTitle },
-        { responseType: 'blob' } // Important for file download
+      const res = await axios.post(`${baseUrl}/api/generate-draft`, 
+        { courseTitle: generateTitle }
       );
       
-      // Create blob link to download
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${generateTitle.replace(/\s+/g, '_')}_Paper.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      
+      setDraftPaper(res.data.paper);
       setGenerateStatus('success');
-      setTimeout(() => setGenerateStatus('idle'), 3000);
-    } catch (error) {
+      // Do not reset status so the paper stays visible
+    } catch (error: any) {
       console.error('Generation error:', error);
+      setErrorMessage(error.response?.data?.error || 'Failed to generate paper. Check if the course title matches the uploaded database.');
       setGenerateStatus('error');
-      setTimeout(() => setGenerateStatus('idle'), 3000);
+      setTimeout(() => setGenerateStatus('idle'), 5000);
     }
   };
 
@@ -223,19 +218,19 @@ export default function ExamDashboard() {
               </div>
               
               {/* Generation UI Placeholder for now */}
-              <div className="bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col items-center justify-center min-h-[400px] text-center">
+               <div className="bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col items-center justify-center min-h-[400px] text-center">
                  <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4">
                     <FileText className="w-8 h-8 text-emerald-400" />
                  </div>
                  <h4 className="text-xl font-bold text-white mb-2">Ready to Draft</h4>
-                 <p className="text-gray-500 max-w-md mb-8">Enter a course title that exists in our normalized Firestore database to generate a compliant draft.</p>
+                 <p className="text-gray-500 max-w-md mb-8">Enter the EXACT Course Title you uploaded to generate your paper.</p>
                  
                  <div className="flex w-full max-w-md gap-3">
                     <input 
                       type="text" 
                       value={generateTitle}
                       onChange={(e) => setGenerateTitle(e.target.value)}
-                      placeholder="Course Title (e.g., Data Structures)"
+                      placeholder="Course Title (e.g., Computer Organization)"
                       className="flex-1 bg-[#0a0a0a] border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500"
                     />
                     <button 
@@ -246,7 +241,100 @@ export default function ExamDashboard() {
                       {generateStatus === 'generating' ? 'Drafting...' : 'Draft Paper'}
                     </button>
                  </div>
+                 {generateStatus === 'error' && (
+                   <p className="text-red-400 mt-4 text-sm">{errorMessage}</p>
+                 )}
               </div>
+
+              {draftPaper && (
+                <div className="mt-12 bg-white text-black p-10 rounded-xl shadow-2xl printable-paper">
+                  <div className="flex justify-between items-center mb-8 border-b pb-4 print:hidden">
+                    <h3 className="text-2xl font-bold text-gray-800">Generated Draft</h3>
+                    <button 
+                      onClick={() => window.print()}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium shadow"
+                    >
+                      Print to PDF
+                    </button>
+                  </div>
+                  
+                  <div className="text-center mb-8">
+                    <h2 className="text-3xl font-bold uppercase border-b-2 border-black inline-block pb-2">{draftPaper.courseTitle}</h2>
+                  </div>
+
+                  <table className="w-full border-collapse border border-black mb-8">
+                    <thead>
+                      <tr className="bg-gray-200">
+                        <th className="border border-black p-2 w-[5%]">Q#</th>
+                        <th className="border border-black p-2 w-[5%]">Sub</th>
+                        <th className="border border-black p-2 w-[60%] text-left">Question Text</th>
+                        <th className="border border-black p-2 w-[10%]">Marks</th>
+                        <th className="border border-black p-2 w-[10%]">CO</th>
+                        <th className="border border-black p-2 w-[10%]">RBT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {draftPaper.modules.map((mod: any, mIdx: number) => (
+                        <React.Fragment key={mIdx}>
+                          <tr>
+                            <td colSpan={6} className="border border-black p-2 font-bold text-center bg-gray-100">
+                              Module {mod.moduleNumber}
+                            </td>
+                          </tr>
+                          
+                          {/* Split A */}
+                          {mod.splitA.map((q: any, i: number) => (
+                            <tr key={'a'+i}>
+                              <td className="border border-black p-2 text-center">{i === 0 ? (mIdx*2 + 1) : ''}</td>
+                              <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
+                              <td className="border border-black p-2">{q.questionText}</td>
+                              <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="border border-black p-2 text-center">{q.co}</td>
+                              <td className="border border-black p-2 text-center">{q.btl}</td>
+                            </tr>
+                          ))}
+
+                          <tr>
+                            <td colSpan={6} className="border border-black p-2 font-bold text-center">OR</td>
+                          </tr>
+
+                          {/* Split B */}
+                          {mod.splitB.map((q: any, i: number) => (
+                            <tr key={'b'+i}>
+                              <td className="border border-black p-2 text-center">{i === 0 ? (mIdx*2 + 2) : ''}</td>
+                              <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
+                              <td className="border border-black p-2">{q.questionText}</td>
+                              <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="border border-black p-2 text-center">{q.co}</td>
+                              <td className="border border-black p-2 text-center">{q.btl}</td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="text-center font-bold text-xl mt-8">*********</div>
+                  
+                  <style dangerouslySetInnerHTML={{__html: `
+                    @media print {
+                      body * {
+                        visibility: hidden;
+                      }
+                      .printable-paper, .printable-paper * {
+                        visibility: visible;
+                      }
+                      .printable-paper {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                        padding: 0;
+                        box-shadow: none;
+                      }
+                    }
+                  `}} />
+                </div>
+              )}
             </div>
           )}
 
