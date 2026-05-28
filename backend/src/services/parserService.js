@@ -119,7 +119,12 @@ const splitTextIntoObjects = (text) => {
 const normalizeQuestion = async (raw) => {
   try {
     let questionText = raw.question || raw.Question || raw.rawText || Object.values(raw)[0];
-    let marks = raw.marks || raw.Marks || extractRegex(questionText, /\[?(\d+)\s*[mM]arks?\]?/) || extractRegex(questionText, /\s+(\d{1,2})$/);
+    
+    // In PDFs, tables get flattened so we might see "... 10 4" (10 marks, CO4)
+    // We will look for trailing number sequences to extract marks
+    let marksMatch = questionText.match(/\s+(\d{1,2})(?:\s+(?:CO)?[1-6])?\s*$/i);
+    let marks = raw.marks || raw.Marks || extractRegex(questionText, /\[?(\d+)\s*[mM]arks?\]?/) || (marksMatch ? marksMatch[1] : null);
+    
     let btl = raw.btl || raw.BTL || extractRegex(questionText, /\[?(L[1-6])\]?/);
     let co = raw.co || raw.CO || extractRegex(questionText, /\[?(CO[1-5])\]?/);
 
@@ -155,7 +160,8 @@ const cleanText = (text) => {
   return text.replace(/\[?(L[1-6])\]?/gi, '')
              .replace(/\[?(CO[1-5])\]?/gi, '')
              .replace(/\[?(\d+)\s*[mM]arks?\]?/gi, '')
-             .replace(/\s+\d{1,2}$/, '')
+             // Match all trailing standalone digits/CO markers (e.g. " 10 4" or " 8 CO1")
+             .replace(/(?:\s+(?:CO)?[0-9]{1,2})+\s*$/gi, '')
              .replace(/^\d+[\.\s]+/, '')
              .trim();
 };
