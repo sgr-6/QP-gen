@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: sjb-qpgen-backend
+    env: docker
+    rootDir: backend
+    plan: free
+    envVars:
+      - key: PORT
+        value: 5000
+      # Render will automatically use the Dockerfile we created in the backend folder
