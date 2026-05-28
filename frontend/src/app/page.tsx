@@ -273,6 +273,31 @@ export default function ExamDashboard() {
 
         </div>
       </main>
+
+      {/* Mobile Navigation Bar */}
+      <div className="md:hidden fixed bottom-0 w-full bg-[#111111] border-t border-gray-800 flex justify-around items-center p-3 z-50 pb-safe">
+        <button 
+          onClick={() => setActiveTab('upload')}
+          className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'upload' ? 'text-blue-400' : 'text-gray-500'}`}
+        >
+          <UploadCloud size={24} />
+          <span className="text-[10px] font-medium">Ingest</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('generate')}
+          className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'generate' ? 'text-emerald-400' : 'text-gray-500'}`}
+        >
+          <FileText size={24} />
+          <span className="text-[10px] font-medium">Draft</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('analytics')}
+          className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'analytics' ? 'text-purple-400' : 'text-gray-500'}`}
+        >
+          <BarChart3 size={24} />
+          <span className="text-[10px] font-medium">Analytics</span>
+        </button>
+      </div>
     </div>
   );
 }
