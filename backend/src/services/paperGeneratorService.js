@@ -110,40 +110,51 @@ const shuffleArray = (array) => {
 const buildValidSplit = (pool, targetMarks) => {
   const shuffledPool = shuffleArray([...pool]);
 
-  // Try 2 questions with a 3-mark buffer
-  for (let i = 0; i < shuffledPool.length; i++) {
-    for (let j = i + 1; j < shuffledPool.length; j++) {
-      let sum = shuffledPool[i].marks + shuffledPool[j].marks;
-      if (Math.abs(sum - targetMarks) <= 3) {
-        let q1 = { ...shuffledPool[i] };
-        let q2 = { ...shuffledPool[j] };
-        
-        // Adjust marks to hit exactly targetMarks
-        let diff = targetMarks - sum;
-        q1.marks += diff;
-        
-        return [q1, q2];
-      }
-    }
-  }
-  // Try 3 questions with a 3-mark buffer
-  for (let i = 0; i < shuffledPool.length; i++) {
-    for (let j = i + 1; j < shuffledPool.length; j++) {
-      for (let k = j + 1; k < shuffledPool.length; k++) {
-        let sum = shuffledPool[i].marks + shuffledPool[j].marks + shuffledPool[k].marks;
+  const try2Questions = () => {
+    for (let i = 0; i < shuffledPool.length; i++) {
+      for (let j = i + 1; j < shuffledPool.length; j++) {
+        let sum = shuffledPool[i].marks + shuffledPool[j].marks;
         if (Math.abs(sum - targetMarks) <= 3) {
           let q1 = { ...shuffledPool[i] };
           let q2 = { ...shuffledPool[j] };
-          let q3 = { ...shuffledPool[k] };
-          
           let diff = targetMarks - sum;
           q1.marks += diff;
-          
-          return [q1, q2, q3];
+          return [q1, q2];
         }
       }
     }
+    return null;
+  };
+
+  const try3Questions = () => {
+    for (let i = 0; i < shuffledPool.length; i++) {
+      for (let j = i + 1; j < shuffledPool.length; j++) {
+        for (let k = j + 1; k < shuffledPool.length; k++) {
+          let sum = shuffledPool[i].marks + shuffledPool[j].marks + shuffledPool[k].marks;
+          if (Math.abs(sum - targetMarks) <= 3) {
+            let q1 = { ...shuffledPool[i] };
+            let q2 = { ...shuffledPool[j] };
+            let q3 = { ...shuffledPool[k] };
+            let diff = targetMarks - sum;
+            q1.marks += diff;
+            return [q1, q2, q3];
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  // Randomly decide whether to try 3 subquestions or 2 subquestions first
+  let result = null;
+  if (Math.random() > 0.5) {
+    result = try3Questions() || try2Questions();
+  } else {
+    result = try2Questions() || try3Questions();
   }
+
+  if (result) return result;
+
   // Fallback
   if (shuffledPool.length >= 2) {
     let q1 = { ...shuffledPool[0] };
