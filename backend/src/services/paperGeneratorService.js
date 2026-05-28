@@ -13,18 +13,29 @@ const admin = require('firebase-admin');
  * @returns {Promise<Object>} Generated Paper
  */
 const generatePaper = async (courseTitle) => {
-  const db = admin.firestore();
-  
-  // 1. Fetch available questions for the course
-  const bankRef = db.collection('question_banks').doc(courseTitle.replace(/\s+/g, '_').toLowerCase());
-  const questionsSnapshot = await bankRef.collection('questions').get();
-  
-  if (questionsSnapshot.empty) {
-    throw new Error(`No question bank found for course: ${courseTitle}`);
-  }
+  let allQuestions = [];
 
-  const allQuestions = [];
-  questionsSnapshot.forEach(doc => allQuestions.push(doc.data()));
+  if (admin.apps.length > 0) {
+    const db = admin.firestore();
+    // 1. Fetch available questions for the course
+    const bankRef = db.collection('question_banks').doc(courseTitle.replace(/\s+/g, '_').toLowerCase());
+    const questionsSnapshot = await bankRef.collection('questions').get();
+    
+    if (questionsSnapshot.empty) {
+      throw new Error(`No question bank found for course: ${courseTitle}`);
+    }
+
+    questionsSnapshot.forEach(doc => allQuestions.push(doc.data()));
+  } else {
+    // In-memory fallback
+    global.inMemoryDB = global.inMemoryDB || { banks: {} };
+    const cachedQuestions = global.inMemoryDB.banks[courseTitle.replace(/\s+/g, '_').toLowerCase()];
+    
+    if (!cachedQuestions || cachedQuestions.length === 0) {
+      throw new Error(`No question bank found for course: ${courseTitle}. Note: The database is running in memory-only mode. Did you upload the file recently?`);
+    }
+    allQuestions = cachedQuestions;
+  }
 
   // 2. We mock "Modules" assuming they exist in the question text or we just split the bank randomly into 5 logical pools.
   // In a real system, the Normalization layer would extract the Module (M1-M5). 

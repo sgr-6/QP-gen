@@ -50,6 +50,11 @@ const uploadFile = async (req, res) => {
 
       await batch.commit();
       console.log(`Saved ${normalizedQuestions.length} questions to Firestore under ${courseTitle}`);
+    } else {
+      // In-memory fallback
+      global.inMemoryDB = global.inMemoryDB || { banks: {} };
+      global.inMemoryDB.banks[courseTitle.replace(/\s+/g, '_').toLowerCase()] = normalizedQuestions;
+      console.log(`Saved ${normalizedQuestions.length} questions to In-Memory DB under ${courseTitle}`);
     }
 
     // Cleanup local temp file
