@@ -65,7 +65,8 @@ const generatePaper = async (courseTitle) => {
     const split1 = buildValidSplit(pool, 20);
     
     // Remove the questions used in split1 from the pool so split2 gets different questions
-    const poolForSplit2 = pool.filter(q => !split1.includes(q));
+    // We compare by questionText because buildValidSplit returns cloned objects
+    const poolForSplit2 = pool.filter(q => !split1.some(s => s.questionText === q.questionText));
     const split2 = buildValidSplit(poolForSplit2, 20); 
 
     if (!split1 || !split2) {
@@ -92,42 +93,68 @@ const generatePaper = async (courseTitle) => {
 };
 
 /**
+ * Shuffles an array in-place.
+ */
+const shuffleArray = (array) => {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+};
+
+/**
  * Builds a split (e.g. 1a and 1b) that sums exactly to targetMarks (20).
+ * It will shuffle the pool for randomness, and allow a 3-mark buffer.
  */
 const buildValidSplit = (pool, targetMarks) => {
-  // Try 2 questions
-  for (let i = 0; i < pool.length; i++) {
-    for (let j = i + 1; j < pool.length; j++) {
-      if (pool[i].marks + pool[j].marks === targetMarks) {
-        return [pool[i], pool[j]];
+  const shuffledPool = shuffleArray([...pool]);
+
+  // Try 2 questions with a 3-mark buffer
+  for (let i = 0; i < shuffledPool.length; i++) {
+    for (let j = i + 1; j < shuffledPool.length; j++) {
+      let sum = shuffledPool[i].marks + shuffledPool[j].marks;
+      if (Math.abs(sum - targetMarks) <= 3) {
+        let q1 = { ...shuffledPool[i] };
+        let q2 = { ...shuffledPool[j] };
+        
+        // Adjust marks to hit exactly targetMarks
+        let diff = targetMarks - sum;
+        q1.marks += diff;
+        
+        return [q1, q2];
       }
     }
   }
-  // Try 3 questions
-  for (let i = 0; i < pool.length; i++) {
-    for (let j = i + 1; j < pool.length; j++) {
-      for (let k = j + 1; k < pool.length; k++) {
-        if (pool[i].marks + pool[j].marks + pool[k].marks === targetMarks) {
-          return [pool[i], pool[j], pool[k]];
+  // Try 3 questions with a 3-mark buffer
+  for (let i = 0; i < shuffledPool.length; i++) {
+    for (let j = i + 1; j < shuffledPool.length; j++) {
+      for (let k = j + 1; k < shuffledPool.length; k++) {
+        let sum = shuffledPool[i].marks + shuffledPool[j].marks + shuffledPool[k].marks;
+        if (Math.abs(sum - targetMarks) <= 3) {
+          let q1 = { ...shuffledPool[i] };
+          let q2 = { ...shuffledPool[j] };
+          let q3 = { ...shuffledPool[k] };
+          
+          let diff = targetMarks - sum;
+          q1.marks += diff;
+          
+          return [q1, q2, q3];
         }
       }
     }
   }
   // Fallback
-  if (pool.length >= 2) {
-    let q1 = { ...pool[0] };
-    let q2 = { ...pool[1] };
-    // If we have to fallback because no combination equals 20, force the marks to sum to 20
-    let total = q1.marks + q2.marks;
-    if (total !== targetMarks) {
-      q1.marks = 10;
-      q2.marks = 10;
-    }
+  if (shuffledPool.length >= 2) {
+    let q1 = { ...shuffledPool[0] };
+    let q2 = { ...shuffledPool[1] };
+    q1.marks = Math.floor(targetMarks / 2);
+    q2.marks = Math.ceil(targetMarks / 2);
     return [q1, q2];
   }
   
-  if (pool.length === 1) {
-    let q1 = { ...pool[0] };
+  if (shuffledPool.length === 1) {
+    let q1 = { ...shuffledPool[0] };
     q1.marks = targetMarks;
     return [q1];
   }
