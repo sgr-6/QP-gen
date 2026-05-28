@@ -58,12 +58,15 @@ const generatePaper = async (courseTitle) => {
   let totalL1L2Marks = 0;
 
   // 3. Generate 5 Modules
-  for (let m = 1; m <= 5; m++) {
-    const pool = modulePools[`M${m}`];
+  ['M1', 'M2', 'M3', 'M4', 'M5'].forEach(m => {
+    const pool = modulePools[m] || [];
     
-    // We need two splits: Split 1 (Q1) and Split 2 (Q2) for the OR condition
+    // We need two 20-mark splits for each module (e.g. 1a, 1b OR 2a, 2b)
     const split1 = buildValidSplit(pool, 20);
-    const split2 = buildValidSplit(pool, 20); // We assume pool is large enough
+    
+    // Remove the questions used in split1 from the pool so split2 gets different questions
+    const poolForSplit2 = pool.filter(q => !split1.includes(q));
+    const split2 = buildValidSplit(poolForSplit2, 20); 
 
     if (!split1 || !split2) {
       throw new Error(`Module ${m} lacks sufficient valid questions to form exactly 20-mark splits.`);
@@ -76,8 +79,8 @@ const generatePaper = async (courseTitle) => {
     });
     
     // Track L1/L2 weighting
-    totalL1L2Marks += getL1L2Marks(split1) + getL1L2Marks(split2); // Simplification: we'll check max possible marks
-  }
+    totalL1L2Marks += getL1L2Marks(split1) + getL1L2Marks(split2); 
+  });
 
   // 4. Academic Rigor Constraint: L1/L2 <= 30%
   // Since students answer one split per module (5 splits total = 100 marks), 
