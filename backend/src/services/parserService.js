@@ -35,6 +35,7 @@ const parseFile = async (filePath) => {
 
   // Normalization layer
   const normalized = [];
+  console.log(`Extracted ${rawQuestions.length} raw blocks`);
   for (const raw of rawQuestions) {
     const norm = await normalizeQuestion(raw);
     if (norm) normalized.push(norm);
@@ -79,11 +80,23 @@ const parsePDF = async (filePath) => {
 const splitTextIntoObjects = (text) => {
   const lines = text.split('\n').filter(line => line.trim().length > 0);
   const results = [];
+  let expectedQNum = 1;
+  
   for (const line of lines) {
-    if (line.match(/^\d+\./)) { // Starts with number e.g. "1."
-      results.push({ rawText: line });
-    } else if (results.length > 0) {
-      results[results.length - 1].rawText += ' ' + line.trim();
+    const trimmed = line.trim();
+    // Match "1.", "2.", etc.
+    if (trimmed.match(/^\d+\./)) {
+      results.push({ rawText: trimmed });
+      expectedQNum = parseInt(trimmed.match(/^\d+/)[0]) + 1;
+    } 
+    // Match standalone numbers that match our expected sequence (or reset to 1 for a new module)
+    else if (trimmed === String(expectedQNum) || trimmed === '1') {
+      if (trimmed === '1') expectedQNum = 1;
+      results.push({ rawText: trimmed });
+      expectedQNum++;
+    } 
+    else if (results.length > 0) {
+      results[results.length - 1].rawText += ' ' + trimmed;
     }
   }
   return results;
