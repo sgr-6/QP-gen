@@ -114,11 +114,26 @@ const buildValidSplit = (pool, targetMarks) => {
     }
   }
   // Fallback
-  if (pool.length >= 2) return [pool[0], pool[1]];
-  if (pool.length === 1) return [pool[0]];
+  if (pool.length >= 2) {
+    let q1 = { ...pool[0] };
+    let q2 = { ...pool[1] };
+    // If we have to fallback because no combination equals 20, force the marks to sum to 20
+    let total = q1.marks + q2.marks;
+    if (total !== targetMarks) {
+      q1.marks = 10;
+      q2.marks = 10;
+    }
+    return [q1, q2];
+  }
+  
+  if (pool.length === 1) {
+    let q1 = { ...pool[0] };
+    q1.marks = targetMarks;
+    return [q1];
+  }
   
   // Extreme fallback (should not happen if pool is populated)
-  return [{ questionText: 'Fallback question due to empty pool', marks: 10, btl: 'L2', co: 'CO1' }];
+  return [{ questionText: 'Fallback question due to empty pool', marks: targetMarks, btl: 'L2', co: 'CO1' }];
 };
 
 const getL1L2Marks = (split) => {

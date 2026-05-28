@@ -128,7 +128,8 @@ const normalizeQuestion = async (raw) => {
     let btl = raw.btl || raw.BTL || extractRegex(questionText, /\[?(L[1-6])\]?/);
     let co = raw.co || raw.CO || extractRegex(questionText, /\[?(CO[1-5])\]?/);
 
-    if (!questionText) return null;
+    // Filter out purely numerical artifacts (e.g. "4") that aren't real questions
+    if (!questionText || !/[a-zA-Z]/.test(questionText)) return null;
 
     // AI Fallback Tagging
     if (!btl || !co) {
