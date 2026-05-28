@@ -23,14 +23,20 @@ app.use('/api', draftRoutes);
 // Initialize Firebase Admin (Wrapped in try-catch to allow server to start even if missing keys)
 let db;
 try {
-  const serviceAccount = require('./firebase-service-account.json');
+  let serviceAccount;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  } else {
+    serviceAccount = require('./firebase-service-account.json');
+  }
+  
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
   db = admin.firestore();
   console.log("Firebase Admin initialized successfully");
 } catch (error) {
-  console.warn("⚠️ Firebase Admin SDK failed to initialize. Please add 'firebase-service-account.json' to the backend folder.");
+  console.warn("⚠️ Firebase Admin SDK failed to initialize. Please ensure FIREBASE_SERVICE_ACCOUNT env var is set, or add 'firebase-service-account.json' to the backend folder.");
 }
 
 // Ensure JWT_SECRET is set
