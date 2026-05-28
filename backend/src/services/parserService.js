@@ -81,18 +81,28 @@ const splitTextIntoObjects = (text) => {
   const lines = text.split('\n').filter(line => line.trim().length > 0);
   const results = [];
   let expectedQNum = 1;
+  let currentModule = 'M1';
   
   for (const line of lines) {
     const trimmed = line.trim();
+    
+    // Check for Module headers
+    const modMatch = trimmed.match(/Module\s*(\d+)/i);
+    if (modMatch) {
+      currentModule = `M${modMatch[1]}`;
+      expectedQNum = 1; // Reset expected question number for the new module
+      continue;
+    }
+
     // Match "1.", "2.", etc.
     if (trimmed.match(/^\d+\./)) {
-      results.push({ rawText: trimmed });
+      results.push({ rawText: trimmed, module: currentModule });
       expectedQNum = parseInt(trimmed.match(/^\d+/)[0]) + 1;
     } 
     // Match standalone numbers that match our expected sequence (or reset to 1 for a new module)
     else if (trimmed === String(expectedQNum) || trimmed === '1') {
       if (trimmed === '1') expectedQNum = 1;
-      results.push({ rawText: trimmed });
+      results.push({ rawText: trimmed, module: currentModule });
       expectedQNum++;
     } 
     else if (results.length > 0) {
@@ -126,7 +136,8 @@ const normalizeQuestion = async (raw) => {
       questionText: cleanText(questionText),
       marks: parseInt(marks) || 5, // Default 5 marks if unknown
       btl: btl || 'L2',
-      co: co || 'CO1'
+      co: co || 'CO1',
+      module: raw.module || null
     };
   } catch (error) {
     console.error("Normalization error on row:", raw, error);
