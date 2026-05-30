@@ -50,22 +50,21 @@ const downloadPdf = async (req, res) => {
  */
 const saveFinalPaper = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No PDF file provided' });
+    const { paper } = req.body;
+    if (!paper || !paper.courseTitle) {
+      return res.status(400).json({ error: 'Paper JSON with courseTitle is required' });
     }
 
-    const file = req.file;
-    const courseTitle = req.body.courseTitle || 'Unknown_Course';
-    const filePath = path.resolve(file.path);
+    const { generatePDFBuffer } = require('../services/pdfService');
+    const pdfBuffer = await generatePDFBuffer(paper);
     
     // 1. Upload to Supabase 'final-papers' bucket
-    const fileName = `${Date.now()}_Final_${courseTitle.replace(/\s+/g, '_')}.pdf`;
-    const fileBuffer = fs.readFileSync(filePath);
+    const fileName = `${Date.now()}_Final_${paper.courseTitle.replace(/\s+/g, '_')}.pdf`;
     
     const { data: uploadData, error: uploadError } = await supabase
       .storage
       .from('final-papers')
-      .upload(fileName, fileBuffer, {
+      .upload(fileName, pdfBuffer, {
         contentType: 'application/pdf',
         upsert: false
       });
@@ -84,20 +83,14 @@ const saveFinalPaper = async (req, res) => {
     // 2. Save pointer to Firestore
     if (admin.apps.length > 0) {
       const db = admin.firestore();
-      const bankRef = db.collection('question_banks').doc(courseTitle.replace(/\s+/g, '_').toLowerCase());
+      const bankRef = db.collection('question_banks').doc(paper.courseTitle.replace(/\s+/g, '_').toLowerCase());
       
-      // We can append this to a subcollection or update the main doc
       const finalPaperRef = bankRef.collection('final_papers').doc(fileName);
       await finalPaperRef.set({
-        courseTitle,
+        courseTitle: paper.courseTitle,
         finalPdfUrl: publicUrl,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
-    }
-
-    // Cleanup local temp file
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
     }
 
     res.json({
@@ -111,8 +104,28 @@ const saveFinalPaper = async (req, res) => {
   }
 };
 
+const downloadDraft = async (req, res) => {
+  try {
+    const { paper } = req.body;
+    if (!paper || !paper.courseTitle) {
+      return res.status(400).json({ error: 'Paper JSON is required' });
+    }
+    
+    const { generatePDFBuffer } = require('../services/pdfService');
+    const pdfBuffer = await generatePDFBuffer(paper);
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${paper.courseTitle.replace(/\s+/g, '_')}_Draft.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error("Error in downloadDraft:", error);
+    res.status(500).json({ error: 'Failed to download draft' });
+  }
+};
+
 module.exports = {
   generateDraft,
   downloadPdf,
-  saveFinalPaper
+  saveFinalPaper,
+  downloadDraft
 };

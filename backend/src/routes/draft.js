@@ -12,6 +12,9 @@ router.post('/generate-draft', generateDraft);
 router.post('/download-pdf', downloadPdf);
 
 // POST /api/save-final-paper
-router.post('/save-final-paper', upload.single('file'), saveFinalPaper);
+router.post('/save-final-paper', saveFinalPaper);
+
+// POST /api/download-draft
+router.post('/download-draft', downloadDraft);
 
 module.exports = router;

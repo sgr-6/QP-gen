@@ -72,36 +72,53 @@ export default function ExamDashboard() {
       if (!draftPaper) return;
       setGenerateStatus('generating');
       
-      // 1. Generate PDF Blob from the DOM
-      const element = document.getElementById('printable-paper');
-      // Use dynamic import to avoid SSR issues
-      const html2pdf = (await import('html2pdf.js')).default;
-      
-      const opt = {
-        margin:       0.5,
-        filename:     `${draftPaper.courseTitle.replace(/\s+/g, '_')}_Final.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
-        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
-      };
-      
-      const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
-      
-      // 2. Upload to Backend
-      const formData = new FormData();
-      formData.append('file', pdfBlob, opt.filename);
-      formData.append('courseTitle', draftPaper.courseTitle);
-
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const res = await axios.post(`${baseUrl}/api/save-final-paper`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const res = await axios.post(`${baseUrl}/api/save-final-paper`, { paper: draftPaper });
 
-      alert('Final paper securely saved to Supabase!\nURL: ' + res.data.url);
+      const pdfUrl = res.data.url;
+      alert('Final paper securely saved to Supabase!\nURL: ' + pdfUrl);
+      
+      // Automatically download the PDF
+      const link = document.createElement('a');
+      link.href = pdfUrl;
+      link.download = `${draftPaper.courseTitle.replace(/\s+/g, '_')}_Final.pdf`;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
       setGenerateStatus('success');
     } catch (error) {
       console.error('Save Final error:', error);
       alert('Failed to save final paper securely.');
+      setGenerateStatus('error');
+      setTimeout(() => setGenerateStatus('success'), 3000);
+    }
+  };
+
+  const handleDownloadDraft = async () => {
+    try {
+      if (!draftPaper) return;
+      setGenerateStatus('generating');
+      
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      // We can use the same route but maybe add a flag, or just use a new route
+      const res = await axios.post(`${baseUrl}/api/download-draft`, { paper: draftPaper }, { responseType: 'blob' });
+      
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${draftPaper.courseTitle.replace(/\s+/g, '_')}_Draft.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      setGenerateStatus('success');
+    } catch (error) {
+      console.error('Download Draft error:', error);
+      alert('Failed to download draft.');
       setGenerateStatus('error');
       setTimeout(() => setGenerateStatus('success'), 3000);
     }
@@ -294,10 +311,10 @@ export default function ExamDashboard() {
                     <h3 className="text-2xl font-bold text-gray-800">Generated Draft</h3>
                     <div className="flex gap-3">
                       <button 
-                        onClick={() => window.print()}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-5 py-2 rounded-lg font-medium shadow"
+                        onClick={handleDownloadDraft}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium shadow flex items-center gap-2"
                       >
-                        Print
+                        <Printer size={18} /> Download Draft
                       </button>
                       <button 
                         onClick={handleSaveFinalPaper}
