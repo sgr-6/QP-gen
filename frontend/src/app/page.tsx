@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle } from 'lucide-react';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { marked } from 'marked';
 
 export default function ExamDashboard() {
   const [activeTab, setActiveTab] = useState('upload');
@@ -354,9 +353,10 @@ export default function ExamDashboard() {
                             <tr key={'a'+i}>
                               <td className="border border-black p-2 text-center">{i === 0 ? (mIdx*2 + 1) : ''}</td>
                               <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
-                              <td className="border border-black p-2 markdown-body">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.questionText}</ReactMarkdown>
-                              </td>
+                              <td 
+                                className="border border-black p-2 markdown-body"
+                                dangerouslySetInnerHTML={{ __html: marked.parse(q.questionText || '') }}
+                              />
                               <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
                               <td className="border border-black p-2 text-center">{q.co}</td>
                               <td className="border border-black p-2 text-center">{q.btl}</td>
@@ -372,9 +372,10 @@ export default function ExamDashboard() {
                             <tr key={'b'+i}>
                               <td className="border border-black p-2 text-center">{i === 0 ? (mIdx*2 + 2) : ''}</td>
                               <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
-                              <td className="border border-black p-2 markdown-body">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.questionText}</ReactMarkdown>
-                              </td>
+                              <td 
+                                className="border border-black p-2 markdown-body"
+                                dangerouslySetInnerHTML={{ __html: marked.parse(q.questionText || '') }}
+                              />
                               <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
                               <td className="border border-black p-2 text-center">{q.co}</td>
                               <td className="border border-black p-2 text-center">{q.btl}</td>
