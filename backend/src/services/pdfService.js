@@ -26,7 +26,8 @@ const generatePaperHTML = (paper) => {
       }
       table {
         width: 100%;
-        border-collapse: collapse;
+        border-collapse: separate;
+        border-spacing: 0;
         margin-top: 10px;
         table-layout: fixed;
         word-wrap: break-word;
