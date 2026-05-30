@@ -67,7 +67,7 @@ const generatePaperHTML = (paper) => {
     </style>
   </head>
   <body>
-    <div class="watermark">CONFIDENTIAL - SEE 2026</div>
+    <div class="watermark">SJBIT CONFIDENTIAL</div>
     <h2 style="text-align:center; text-transform:uppercase;">${paper.courseTitle}</h2>
     
     <table>
