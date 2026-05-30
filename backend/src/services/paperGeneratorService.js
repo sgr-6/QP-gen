@@ -43,8 +43,21 @@ const generatePaper = async (courseTitle) => {
   const modulePools = { M1: [], M2: [], M3: [], M4: [], M5: [] };
   
   allQuestions.forEach((q, index) => {
-    // If 'module' tag exists, use it, otherwise distribute round-robin for testing
-    const m = q.module || `M${(index % 5) + 1}`;
+    let m = q.module;
+    if (m && typeof m === 'string') {
+      const match = m.match(/\\d+/);
+      if (match && parseInt(match[0], 10) >= 1 && parseInt(match[0], 10) <= 5) {
+        m = \`M\${match[0]}\`;
+      } else {
+        m = \`M\${(index % 5) + 1}\`;
+      }
+    } else {
+      m = \`M\${(index % 5) + 1}\`;
+    }
+    
+    if (!modulePools[m]) {
+      modulePools[m] = [];
+    }
     modulePools[m].push(q);
   });
 
