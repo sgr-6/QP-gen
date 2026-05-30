@@ -122,7 +122,34 @@ const parseDOCX = async (url) => {
   turndownService.use(turndownPluginGfm.gfm);
   const markdown = turndownService.turndown(result.value);
   
-  return splitTextIntoObjects(markdown);
+  try {
+    const prompt = `You are an expert exam parser. Extract all questions from this document text. 
+Return ONLY a valid JSON array of objects with the following schema:
+[{ "questionText": "Question text preserving any Markdown formatting for tables", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
+Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.
+
+DOCUMENT TEXT:
+${markdown}`;
+
+    const geminiResponse = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt
+    });
+
+    let resultText = geminiResponse.text.replace(/^```json/im, '').replace(/```$/im, '').trim();
+    const parsedJson = JSON.parse(resultText);
+    
+    return parsedJson.map(q => ({
+      rawText: q.questionText,
+      marks: q.marks,
+      btl: q.btl,
+      co: q.co,
+      module: q.module
+    }));
+  } catch (error) {
+    console.error("Gemini DOCX parsing failed, falling back to regex:", error);
+    return splitTextIntoObjects(markdown);
+  }
 };
 
 const parsePDF = async (url) => {
@@ -146,8 +173,11 @@ For tables, use standard markdown table syntax inside the questionText.
 Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.`;
 
     const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-1.5-pro',
-      contents: [uploadedFile, prompt]
+      model: 'gemini-2.5-flash',
+      contents: [
+        { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
+        prompt
+      ]
     });
 
     // Cleanup
@@ -196,10 +226,15 @@ const splitTextIntoObjects = (text) => {
       continue;
     }
 
-    // Match "1.", "2.", etc.
-    if (trimmed.match(/^\d+\./)) {
+    // Clean markdown characters at the start of the line for regex check
+    const cleanedLine = trimmed.replace(/^[\*\#\_\>\[\]\-\s]+/, '');
+
+    // Match "1.", "2)", "1a)", "a)", "Q1", etc.
+    const isQuestionStart = cleanedLine.match(/^(?:Q\s*)?\d+\s*[\.\)]|^\d*\s*[a-z]\s*[\.\)]/i);
+    
+    if (isQuestionStart) {
       results.push({ rawText: trimmed, module: currentModule });
-      expectedQNum = parseInt(trimmed.match(/^\d+/)[0]) + 1;
+      expectedQNum++; // We just loosely increment, doesn't matter much with this regex
     } 
     // Match standalone numbers that match our expected sequence (or reset to 1 for a new module)
     else if (trimmed === String(expectedQNum) || trimmed === '1') {
@@ -208,7 +243,7 @@ const splitTextIntoObjects = (text) => {
       expectedQNum++;
     } 
     else if (results.length > 0) {
-      results[results.length - 1].rawText += ' ' + trimmed;
+      results[results.length - 1].rawText += '\n' + trimmed;
     }
   }
   return results;

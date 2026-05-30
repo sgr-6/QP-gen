@@ -312,7 +312,7 @@ export default function ExamDashboard() {
                     <h2 className="text-3xl font-bold uppercase border-b-2 border-black inline-block pb-2">{draftPaper.courseTitle}</h2>
                   </div>
 
-                  <table className="w-full border-collapse border border-black mb-8">
+                  <table className="w-full border-collapse border border-black mb-8" style={{ tableLayout: 'fixed', wordWrap: 'break-word' }}>
                     <thead>
                       <tr className="bg-gray-200">
                         <th className="border border-black p-2 w-[5%]">Q#</th>
@@ -337,7 +337,7 @@ export default function ExamDashboard() {
                             <tr key={'a'+i}>
                               <td className="border border-black p-2 text-center">{i === 0 ? (mIdx*2 + 1) : ''}</td>
                               <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
-                              <td className="border border-black p-2 markdown-body">
+                              <td className="border border-black p-2 markdown-body" style={{ maxWidth: 0, overflow: 'hidden' }}>
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.questionText}</ReactMarkdown>
                               </td>
                               <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
@@ -355,7 +355,7 @@ export default function ExamDashboard() {
                             <tr key={'b'+i}>
                               <td className="border border-black p-2 text-center">{i === 0 ? (mIdx*2 + 2) : ''}</td>
                               <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
-                              <td className="border border-black p-2 markdown-body">
+                              <td className="border border-black p-2 markdown-body" style={{ maxWidth: 0, overflow: 'hidden' }}>
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.questionText}</ReactMarkdown>
                               </td>
                               <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
@@ -389,8 +389,8 @@ export default function ExamDashboard() {
                     /* Basic Markdown Styles */
                     .markdown-body p { margin-bottom: 0.5rem; }
                     .markdown-body p:last-child { margin-bottom: 0; }
-                    .markdown-body img { max-width: 300px; height: auto; display: block; margin: 0.5rem 0; }
-                    .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; }
+                    .markdown-body img { max-width: 100%; height: auto; display: block; margin: 0.5rem 0; }
+                    .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; table-layout: fixed; word-wrap: break-word; font-size: 10pt; }
                     .markdown-body th, .markdown-body td { border: 1px solid #000; padding: 4px; text-align: left; }
                   `}} />
                 </div>

@@ -1,0 +1,21 @@
+Module,Question,Marks,BTL,CO
+M1,1. What is Node?,10,L1,CO1
+M1,2. Explain Express.,10,L2,CO1
+M1,3. Detail REST APIs.,20,L3,CO2
+M1,4. What is Middleware?,20,L2,CO2
+M2,1. What is React?,10,L1,CO3
+M2,2. Explain Hooks.,10,L2,CO3
+M2,3. Detail Context API.,20,L3,CO4
+M2,4. What is Redux?,20,L2,CO4
+M3,1. What is MongoDB?,10,L1,CO5
+M3,2. Explain Mongoose.,10,L2,CO5
+M3,3. Detail Aggregation.,20,L3,CO1
+M3,4. What is Indexing?,20,L2,CO1
+M4,1. What is Docker?,10,L1,CO2
+M4,2. Explain Containers.,10,L2,CO2
+M4,3. Detail Kubernetes.,20,L3,CO3
+M4,4. What is CI/CD?,20,L2,CO3
+M5,1. What is AWS?,10,L1,CO4
+M5,2. Explain EC2.,10,L2,CO4
+M5,3. Detail S3.,20,L3,CO5
+M5,4. What is Lambda?,20,L2,CO5

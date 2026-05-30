@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const { marked } = require('marked');
 
 const generatePaperHTML = (paper) => {
   let html = `
@@ -27,6 +28,8 @@ const generatePaperHTML = (paper) => {
         width: 100%;
         border-collapse: collapse;
         margin-top: 10px;
+        table-layout: fixed;
+        word-wrap: break-word;
       }
       th, td {
         border: 1px solid black;
@@ -36,6 +39,17 @@ const generatePaperHTML = (paper) => {
       }
       .q-text {
         text-align: left;
+        max-width: 0; /* Magic trick: max-width: 0 on table cell forces it to respect width percentage */
+        overflow: hidden;
+      }
+      .q-text table {
+        width: 100%;
+        table-layout: fixed;
+        word-wrap: break-word;
+        font-size: 10pt;
+      }
+      .q-text img {
+        max-width: 100%;
       }
       .module-header {
         font-weight: bold;
@@ -84,7 +98,7 @@ const generatePaperHTML = (paper) => {
         <tr>
           <td>${i === 0 ? qNumber : ''}</td>
           <td>${subLetter})</td>
-          <td class="q-text">${q.questionText}</td>
+          <td class="q-text">${marked.parse(q.questionText || '')}</td>
           <td>[${String(q.marks).padStart(2, '0')} Marks]</td>
           <td>${q.co || '-'}</td>
           <td>${q.btl || '-'}</td>
@@ -109,7 +123,7 @@ const generatePaperHTML = (paper) => {
         <tr>
           <td>${i === 0 ? qNumber : ''}</td>
           <td>${subLetter})</td>
-          <td class="q-text">${q.questionText}</td>
+          <td class="q-text">${marked.parse(q.questionText || '')}</td>
           <td>[${String(q.marks).padStart(2, '0')} Marks]</td>
           <td>${q.co || '-'}</td>
           <td>${q.btl || '-'}</td>

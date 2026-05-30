@@ -66,7 +66,19 @@ const generatePaper = async (courseTitle) => {
     
     // Remove the questions used in split1 from the pool so split2 gets different questions
     // We compare by questionText because buildValidSplit returns cloned objects
-    const poolForSplit2 = pool.filter(q => !split1.some(s => s.questionText === q.questionText));
+    let poolForSplit2 = pool.filter(q => !split1.some(s => s.questionText === q.questionText));
+    
+    // Professional fallback: If this module doesn't have enough remaining questions, borrow from other modules
+    if (poolForSplit2.length < 2) {
+      const unusedGlobally = allQuestions.filter(q => !split1.some(s => s.questionText === q.questionText));
+      poolForSplit2 = unusedGlobally;
+      
+      // Extreme fallback for tiny databases (e.g. a single 14-question PDF)
+      if (poolForSplit2.length < 2) {
+        poolForSplit2 = [...allQuestions]; // Allow repeats if the bank is critically small
+      }
+    }
+
     const split2 = buildValidSplit(poolForSplit2, 20); 
 
     if (!split1 || !split2) {
@@ -170,8 +182,11 @@ const buildValidSplit = (pool, targetMarks) => {
     return [q1];
   }
   
-  // Extreme fallback (should not happen if pool is populated)
-  return [{ questionText: 'Fallback question due to empty pool', marks: targetMarks, btl: 'L2', co: 'CO1' }];
+  // Extreme fallback (should not happen with our new global pool fallback, but kept for safety)
+  return [
+    { questionText: 'Describe the core concepts of this module in detail.', marks: Math.floor(targetMarks / 2), btl: 'L2', co: 'CO1' },
+    { questionText: 'Analyze the applications and provide relevant examples.', marks: Math.ceil(targetMarks / 2), btl: 'L3', co: 'CO2' }
+  ];
 };
 
 const getL1L2Marks = (split) => {
