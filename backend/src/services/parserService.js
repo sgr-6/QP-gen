@@ -126,13 +126,14 @@ const parseDOCX = async (url) => {
     const prompt = `You are an expert exam parser. Extract all questions from this document text. 
 Return ONLY a valid JSON array of objects with the following schema:
 [{ "questionText": "Question text preserving any Markdown formatting for tables", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
+CRITICAL: If a question contains a table followed by sub-questions (e.g., "1) What is...", "2) Determine..."), make sure the sub-questions are placed OUTSIDE and BELOW the markdown table, NOT inside the table rows!
 Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.
 
 DOCUMENT TEXT:
 ${markdown}`;
 
     const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.5-pro',
       contents: prompt
     });
 
@@ -170,10 +171,11 @@ const parsePDF = async (url) => {
 Return ONLY a valid JSON array of objects with the following schema:
 [{ "questionText": "Question text preserving any Markdown formatting for tables", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
 For tables, use standard markdown table syntax inside the questionText. 
+CRITICAL: If a question contains a table followed by sub-questions (e.g., "1) What is...", "2) Determine..."), make sure the sub-questions are placed OUTSIDE and BELOW the markdown table, NOT inside the table rows!
 Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.`;
 
     const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.5-pro',
       contents: [
         { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
         prompt
