@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { parseFile } = require('../services/parserService');
+const supabase = require('../config/supabaseClient');
 
 // Configure Multer for local temporary storage before uploading to Firebase
 const upload = multer({ dest: 'uploads/' });
@@ -17,16 +18,34 @@ const uploadFile = async (req, res) => {
     const courseTitle = req.body.courseTitle || 'Unknown Course';
     const filePath = path.resolve(file.path);
 
-    // 1. We skip Firebase Cloud Storage to avoid Blaze Plan requirements.
-    // The file is stored temporarily in `filePath` via Multer.
+    // 1. Upload to Supabase 'question-banks' bucket
+    const fileExt = path.extname(file.originalname);
+    const fileName = `${Date.now()}_${courseTitle.replace(/\s+/g, '_')}${fileExt}`;
+    
+    const fileBuffer = fs.readFileSync(filePath);
+    
+    const { data: uploadData, error: uploadError } = await supabase
+      .storage
+      .from('question-banks')
+      .upload(fileName, fileBuffer, {
+        contentType: file.mimetype,
+        upsert: false
+      });
 
-    // 2. Multi-Format Parsing & Normalization Layer
-    // Rename file to have original extension so parsers work correctly
-    const tempParsedPath = `${filePath}${path.extname(file.originalname)}`;
-    fs.renameSync(filePath, tempParsedPath);
+    if (uploadError) {
+      throw new Error(`Supabase upload failed: ${uploadError.message}`);
+    }
 
-    console.log(`Parsing file: ${tempParsedPath}`);
-    const normalizedQuestions = await parseFile(tempParsedPath);
+    const { data: { publicUrl } } = supabase
+      .storage
+      .from('question-banks')
+      .getPublicUrl(fileName);
+
+    console.log(`Uploaded to Supabase: ${publicUrl}`);
+
+    // 2. Multi-Format Parsing & Normalization Layer (Fetch from Supabase URL)
+    console.log(`Parsing file from URL: ${publicUrl}`);
+    const normalizedQuestions = await parseFile(publicUrl, fileExt);
 
     // 3. Save the Normalized Questions to Firestore
     if (admin.apps.length > 0) {
@@ -38,6 +57,7 @@ const uploadFile = async (req, res) => {
       const bankRef = db.collection('question_banks').doc(courseTitle.replace(/\s+/g, '_').toLowerCase());
       batch.set(bankRef, {
         courseTitle,
+        sourceFileUrl: publicUrl,
         uploadedAt: admin.firestore.FieldValue.serverTimestamp(),
         totalQuestions: normalizedQuestions.length
       });
@@ -57,9 +77,9 @@ const uploadFile = async (req, res) => {
       console.log(`Saved ${normalizedQuestions.length} questions to In-Memory DB under ${courseTitle}`);
     }
 
-    // Cleanup local temp file
-    if (fs.existsSync(tempParsedPath)) {
-      fs.unlinkSync(tempParsedPath);
+    // Cleanup local temp file from multer
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
 
     // Return the normalized JSON array

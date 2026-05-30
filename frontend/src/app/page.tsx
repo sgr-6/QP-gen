@@ -65,6 +65,46 @@ export default function ExamDashboard() {
     }
   };
 
+  const handleSaveFinalPaper = async () => {
+    try {
+      if (!draftPaper) return;
+      setGenerateStatus('generating');
+      
+      // 1. Generate PDF Blob from the DOM
+      const element = document.getElementById('printable-paper');
+      // Use dynamic import to avoid SSR issues
+      const html2pdf = (await import('html2pdf.js')).default;
+      
+      const opt = {
+        margin:       0.5,
+        filename:     `${draftPaper.courseTitle.replace(/\s+/g, '_')}_Final.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2 },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+      };
+      
+      const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
+      
+      // 2. Upload to Backend
+      const formData = new FormData();
+      formData.append('file', pdfBlob, opt.filename);
+      formData.append('courseTitle', draftPaper.courseTitle);
+
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const res = await axios.post(`${baseUrl}/api/save-final-paper`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      alert('Final paper securely saved to Supabase!\nURL: ' + res.data.url);
+      setGenerateStatus('success');
+    } catch (error) {
+      console.error('Save Final error:', error);
+      alert('Failed to save final paper securely.');
+      setGenerateStatus('error');
+      setTimeout(() => setGenerateStatus('success'), 3000);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-gray-100 font-sans overflow-hidden">
       {/* Sidebar */}
@@ -247,15 +287,23 @@ export default function ExamDashboard() {
               </div>
 
               {draftPaper && (
-                <div className="mt-12 bg-white text-black p-10 rounded-xl shadow-2xl printable-paper">
+                <div id="printable-paper" className="mt-12 bg-white text-black p-10 rounded-xl shadow-2xl printable-paper relative">
                   <div className="flex justify-between items-center mb-8 border-b pb-4 print:hidden">
                     <h3 className="text-2xl font-bold text-gray-800">Generated Draft</h3>
-                    <button 
-                      onClick={() => window.print()}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium shadow"
-                    >
-                      Print to PDF
-                    </button>
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={() => window.print()}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-5 py-2 rounded-lg font-medium shadow"
+                      >
+                        Print
+                      </button>
+                      <button 
+                        onClick={handleSaveFinalPaper}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-medium shadow flex items-center gap-2"
+                      >
+                        <CheckCircle size={18} /> Publish Final Paper
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="text-center mb-8">

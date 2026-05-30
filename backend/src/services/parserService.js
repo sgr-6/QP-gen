@@ -4,30 +4,32 @@ const csv = require('csv-parser');
 const xlsx = require('xlsx');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse');
+const axios = require('axios');
 const { inferTags } = require('./aiService');
 
 /**
- * Extracts and normalizes text from a file based on its extension.
+ * Extracts and normalizes text from a file stream based on its extension.
  * Supported: .csv, .xlsx, .docx, .pdf
- * @param {string} filePath 
+ * @param {string} fileUrl The Supabase public URL
+ * @param {string} ext The file extension
  * @returns {Promise<Array>} Array of normalized questions [{questionText, marks, btl, co}]
  */
-const parseFile = async (filePath) => {
-  const ext = path.extname(filePath).toLowerCase();
+const parseFile = async (fileUrl, ext) => {
+  ext = ext.toLowerCase();
   let rawQuestions = [];
 
   switch (ext) {
     case '.csv':
-      rawQuestions = await parseCSV(filePath);
+      rawQuestions = await parseCSV(fileUrl);
       break;
     case '.xlsx':
-      rawQuestions = await parseXLSX(filePath);
+      rawQuestions = await parseXLSX(fileUrl);
       break;
     case '.docx':
-      rawQuestions = await parseDOCX(filePath);
+      rawQuestions = await parseDOCX(fileUrl);
       break;
     case '.pdf':
-      rawQuestions = await parsePDF(filePath);
+      rawQuestions = await parsePDF(fileUrl);
       break;
     default:
       throw new Error(`Unsupported file format: ${ext}`);
@@ -44,10 +46,11 @@ const parseFile = async (filePath) => {
   return normalized;
 };
 
-const parseCSV = (filePath) => {
+const parseCSV = async (url) => {
+  const response = await axios.get(url, { responseType: 'stream' });
   return new Promise((resolve, reject) => {
     const results = [];
-    fs.createReadStream(filePath)
+    response.data
       .pipe(csv())
       .on('data', (data) => results.push(data))
       .on('end', () => resolve(results))
@@ -55,20 +58,24 @@ const parseCSV = (filePath) => {
   });
 };
 
-const parseXLSX = async (filePath) => {
-  const workbook = xlsx.readFile(filePath);
+const parseXLSX = async (url) => {
+  const response = await axios.get(url, { responseType: 'arraybuffer' });
+  const workbook = xlsx.read(response.data, { type: 'buffer' });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   return xlsx.utils.sheet_to_json(sheet);
 };
 
-const parseDOCX = async (filePath) => {
-  const result = await mammoth.extractRawText({ path: filePath });
+const parseDOCX = async (url) => {
+  const response = await axios.get(url, { responseType: 'arraybuffer' });
+  const buffer = Buffer.from(response.data);
+  const result = await mammoth.extractRawText({ buffer });
   return splitTextIntoObjects(result.value);
 };
 
-const parsePDF = async (filePath) => {
-  const dataBuffer = fs.readFileSync(filePath);
+const parsePDF = async (url) => {
+  const response = await axios.get(url, { responseType: 'arraybuffer' });
+  const dataBuffer = Buffer.from(response.data);
   const data = await pdfParse(dataBuffer);
   return splitTextIntoObjects(data.text);
 };
