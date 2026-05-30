@@ -45,14 +45,14 @@ const generatePaper = async (courseTitle) => {
   allQuestions.forEach((q, index) => {
     let m = q.module;
     if (m && typeof m === 'string') {
-      const match = m.match(/\\d+/);
+      const match = m.match(/\d+/);
       if (match && parseInt(match[0], 10) >= 1 && parseInt(match[0], 10) <= 5) {
-        m = \`M\${match[0]}\`;
+        m = `M${match[0]}`;
       } else {
-        m = \`M\${(index % 5) + 1}\`;
+        m = `M${(index % 5) + 1}`;
       }
     } else {
-      m = \`M\${(index % 5) + 1}\`;
+      m = `M${(index % 5) + 1}`;
     }
     
     if (!modulePools[m]) {
