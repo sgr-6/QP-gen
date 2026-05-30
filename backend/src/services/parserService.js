@@ -1,11 +1,29 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const csv = require('csv-parser');
 const xlsx = require('xlsx');
 const mammoth = require('mammoth');
-const pdfParse = require('pdf-parse');
+const pdfParse = require('pdf-parse'); // Fallback if needed
 const axios = require('axios');
 const { inferTags } = require('./aiService');
+const TurndownService = require('turndown');
+const turndownPluginGfm = require('turndown-plugin-gfm');
+const supabase = require('../config/supabaseClient');
+const { GoogleGenAI } = require('@google/genai');
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+const ensureBucket = async (bucketName) => {
+  try {
+    const { data, error } = await supabase.storage.getBucket(bucketName);
+    if (error && error.message.includes('not found')) {
+      await supabase.storage.createBucket(bucketName, { public: true });
+    }
+  } catch (err) {
+    console.log("Bucket check error:", err.message);
+  }
+};
 
 /**
  * Extracts and normalizes text from a file stream based on its extension.
@@ -67,17 +85,94 @@ const parseXLSX = async (url) => {
 };
 
 const parseDOCX = async (url) => {
+  await ensureBucket('question-images');
   const response = await axios.get(url, { responseType: 'arraybuffer' });
   const buffer = Buffer.from(response.data);
-  const result = await mammoth.extractRawText({ buffer });
-  return splitTextIntoObjects(result.value);
+  
+  const options = {
+    convertImage: mammoth.images.imgElement(function(image) {
+      return image.read("base64").then(async function(imageBase64) {
+        const ext = image.contentType.split('/')[1] || 'jpeg';
+        const fileName = `img_${Date.now()}_${Math.floor(Math.random()*1000)}.${ext}`;
+        const binaryBuffer = Buffer.from(imageBase64, 'base64');
+        
+        const { error: uploadError } = await supabase
+          .storage
+          .from('question-images')
+          .upload(fileName, binaryBuffer, { contentType: image.contentType, upsert: false });
+          
+        if (uploadError) {
+          console.error("Image upload failed:", uploadError);
+          return { src: "" };
+        }
+        
+        const { data: { publicUrl } } = supabase
+          .storage
+          .from('question-images')
+          .getPublicUrl(fileName);
+          
+        return { src: publicUrl };
+      });
+    })
+  };
+
+  const result = await mammoth.convertToHtml({ buffer }, options);
+  
+  const turndownService = new TurndownService({ headingStyle: 'atx' });
+  turndownService.use(turndownPluginGfm.gfm);
+  const markdown = turndownService.turndown(result.value);
+  
+  return splitTextIntoObjects(markdown);
 };
 
 const parsePDF = async (url) => {
+  // Use Gemini 1.5 Pro to natively parse PDF preserving tables
   const response = await axios.get(url, { responseType: 'arraybuffer' });
   const dataBuffer = Buffer.from(response.data);
-  const data = await pdfParse(dataBuffer);
-  return splitTextIntoObjects(data.text);
+  
+  const tempPath = path.join(os.tmpdir(), `temp_${Date.now()}.pdf`);
+  fs.writeFileSync(tempPath, dataBuffer);
+  
+  try {
+    const uploadedFile = await ai.files.upload({
+      file: tempPath,
+      mimeType: 'application/pdf',
+    });
+
+    const prompt = `You are an expert exam parser. Extract all questions from this document. 
+Return ONLY a valid JSON array of objects with the following schema:
+[{ "questionText": "Question text preserving any Markdown formatting for tables", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
+For tables, use standard markdown table syntax inside the questionText. 
+Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.`;
+
+    const geminiResponse = await ai.models.generateContent({
+      model: 'gemini-1.5-pro',
+      contents: [uploadedFile, prompt]
+    });
+
+    // Cleanup
+    await ai.files.delete({ name: uploadedFile.name });
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+
+    let resultText = geminiResponse.text.replace(/^```json/im, '').replace(/```$/im, '').trim();
+    const parsedJson = JSON.parse(resultText);
+    
+    // Map to the raw format the normalizer expects
+    return parsedJson.map(q => ({
+      rawText: q.questionText,
+      marks: q.marks,
+      btl: q.btl,
+      co: q.co,
+      module: q.module
+    }));
+
+  } catch (error) {
+    console.error("Gemini PDF parsing failed, falling back to pdf-parse:", error);
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    // Fallback
+    const data = await pdfParse(dataBuffer);
+    return splitTextIntoObjects(data.text);
+  }
 };
 
 /**
