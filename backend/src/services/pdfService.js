@@ -1,5 +1,4 @@
 const puppeteer = require('puppeteer');
-const { marked } = require('marked');
 
 const generatePaperHTML = (paper) => {
   let html = `
@@ -103,7 +102,7 @@ const generatePaperHTML = (paper) => {
         <tr>
           <td>${i === 0 ? qNumber : ''}</td>
           <td>${subLetter})</td>
-          <td class="q-text">${marked.parse(q.questionText || '')}</td>
+          <td class="q-text">${q.htmlText || q.questionText || ''}</td>
           <td>[${String(q.marks).padStart(2, '0')} Marks]</td>
           <td>${q.co || '-'}</td>
           <td>${q.btl || '-'}</td>
@@ -128,7 +127,7 @@ const generatePaperHTML = (paper) => {
         <tr>
           <td>${i === 0 ? qNumber : ''}</td>
           <td>${subLetter})</td>
-          <td class="q-text">${marked.parse(q.questionText || '')}</td>
+          <td class="q-text">${q.htmlText || q.questionText || ''}</td>
           <td>[${String(q.marks).padStart(2, '0')} Marks]</td>
           <td>${q.co || '-'}</td>
           <td>${q.btl || '-'}</td>
@@ -165,10 +164,10 @@ const generatePDFBuffer = async (paper) => {
   const pdfBuffer = await page.pdf({
     format: 'A4',
     margin: {
-      top: '20mm',
-      right: '20mm',
-      bottom: '20mm',
-      left: '20mm'
+      top: '15mm',
+      right: '10mm',
+      bottom: '15mm',
+      left: '10mm'
     },
     printBackground: true
   });
