@@ -1,10 +1,8 @@
 "use client";
 
 import React, { useState } from 'react';
-import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle } from 'lucide-react';
+import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle, Printer } from 'lucide-react';
 import axios from 'axios';
-import MarkdownIt from 'markdown-it';
-const md = new MarkdownIt();
 
 export default function ExamDashboard() {
   const [activeTab, setActiveTab] = useState('upload');
@@ -359,7 +357,7 @@ export default function ExamDashboard() {
                               <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
                               <td 
                                 className="border border-black p-2 markdown-body"
-                                dangerouslySetInnerHTML={{ __html: md.render(q.questionText || '') }}
+                                dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }}
                               />
                               <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
                               <td className="border border-black p-2 text-center">{q.co}</td>
@@ -378,7 +376,7 @@ export default function ExamDashboard() {
                               <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
                               <td 
                                 className="border border-black p-2 markdown-body"
-                                dangerouslySetInnerHTML={{ __html: md.render(q.questionText || '') }}
+                                dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }}
                               />
                               <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
                               <td className="border border-black p-2 text-center">{q.co}</td>
@@ -409,10 +407,11 @@ export default function ExamDashboard() {
                       }
                     }
                     /* Basic Markdown Styles */
+                    table { border-collapse: separate !important; border-spacing: 0 !important; }
                     .markdown-body p { margin-bottom: 0.5rem; }
                     .markdown-body p:last-child { margin-bottom: 0; }
                     .markdown-body img { max-width: 100%; height: auto; display: block; margin: 0.5rem 0; }
-                    .markdown-body table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 0.5rem; }
+                    .markdown-body table { width: 100%; border-collapse: separate !important; border-spacing: 0 !important; margin-bottom: 0.5rem; }
                     .markdown-body th, .markdown-body td { border: 1px solid #000; padding: 4px; text-align: left; }
                   `}} />
                 </div>

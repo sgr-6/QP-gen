@@ -1,12 +1,12 @@
 const admin = require('firebase-admin');
+const MarkdownIt = require('markdown-it');
+const md = new MarkdownIt({ breaks: true });
 
 /**
- * Generates a valid question paper adhering to academic constraints.
- * 
- * Rules:
- * 1. 5 Modules.
- * 2. OR Split (1a+b OR 2a+b).
- * 3. Exact 20 marks per split.
+ * Core Algorithm for Paper Generation:
+ * 1. Fetch questions matching the course title.
+ * 2. Group them by Module (1-5).
+ * 3. Inside each Module, try to form 2 sets (Split A and Split B) exactly totaling 20 marks each.
  * 4. L1/L2 <= 30% of total marks.
  * 
  * @param {string} courseTitle 
@@ -100,6 +100,24 @@ const generatePaper = async (courseTitle) => {
   // we must ensure that any valid path a student takes does not exceed 30 marks of L1/L2.
   // We will run a validation check over the generated paper.
   validateAcademicRigor(paper);
+
+  // Pre-render markdown to HTML on the backend to avoid frontend crashes
+  paper.modules.forEach(mod => {
+    if (mod.splitA) {
+      mod.splitA.forEach(q => {
+        if (q.questionText) {
+          q.htmlText = md.render(q.questionText);
+        }
+      });
+    }
+    if (mod.splitB) {
+      mod.splitB.forEach(q => {
+        if (q.questionText) {
+          q.htmlText = md.render(q.questionText);
+        }
+      });
+    }
+  });
 
   return paper;
 };

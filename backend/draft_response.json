@@ -1,0 +1,206 @@
+{
+  "message": "Draft generated successfully!",
+  "paper": {
+    "courseTitle": "os",
+    "generatedAt": "2026-05-30T12:13:06.404Z",
+    "totalMarks": 100,
+    "modules": [
+      {
+        "moduleNumber": "M1",
+        "splitA": [
+          {
+            "marks": 10,
+            "module": "M1",
+            "co": "CO1",
+            "btl": "L2",
+            "questionText": "What is Operating System and explain its various views and roles from different perspectives."
+          },
+          {
+            "module": "M1",
+            "co": "CO1",
+            "btl": "L2",
+            "questionText": "Describe the storage structure of the computer system, dual-mode operation, and the various operating system structures. Include appropriate diagrams..",
+            "marks": 10
+          }
+        ],
+        "splitB": [
+          {
+            "marks": 10,
+            "module": "M1",
+            "co": "CO1",
+            "btl": "L2",
+            "questionText": "What are system calls? Explain with examples and describe different types of system calls."
+          },
+          {
+            "module": "M1",
+            "co": "CO1",
+            "btl": "L2",
+            "questionText": "List and explain the various services provided by an Operating System for users and efficient functioning.",
+            "marks": 10
+          }
+        ]
+      },
+      {
+        "moduleNumber": "M2",
+        "splitA": [
+          {
+            "marks": 10,
+            "module": "M2",
+            "co": "CO2",
+            "btl": "L2",
+            "questionText": "Explain preemptive and non-preemptive scheduling, and define the following scheduling terms: CPU utilization, throughput, turnaround time, waiting time, and response time."
+          },
+          {
+            "module": "M2",
+            "co": "CO2",
+            "btl": "L3",
+            "questionText": "Consider the following processes with the burst time and arrival time. Calculate the Average Waiting and Average Turnaround time using non-preemptive Priority Scheduling Algorithm.\n<img src=\"https://prjokwmuhfmccfizxxdf.supabase.co/storage/v1/object/public/question-images/img_1780132963533_358.png\">",
+            "marks": 10
+          }
+        ],
+        "splitB": [
+          {
+            "module": "M2",
+            "co": "CO2",
+            "btl": "L3",
+            "questionText": "Consider the following processes with the burst time and arrival time. Calculate the Average Waiting and Average Turnaround time using SRTF\n<img src=\"https://prjokwmuhfmccfizxxdf.supabase.co/storage/v1/object/public/question-images/img_1780132961681_249.png\">",
+            "marks": 10
+          },
+          {
+            "marks": 10,
+            "module": "M2",
+            "co": "CO2",
+            "btl": "L3",
+            "questionText": "Consider the following processes with the burst time and arrival time. Calculate the Average Waiting and Average Turnaround time using SRTF\n<img src=\"https://prjokwmuhfmccfizxxdf.supabase.co/storage/v1/object/public/question-images/img_1780132961200_219.png\">"
+          }
+        ]
+      },
+      {
+        "moduleNumber": "M3",
+        "splitA": [
+          {
+            "module": "M3",
+            "co": "CO3",
+            "btl": "L3",
+            "questionText": "consider the following snapshot\n| Process | Current allocation A B C D | Maximum need A B C D | Available A B C D |\n|---|---|---|---|\n| P0 | 0 0 1 2 | 0 0 1 2 | 1 5 2 0 |\n| P1 | 1 0 0 0 | 1 7 5 0 | |\n| P2 | 1 3 5 4 | 2 3 5 6 | |\n| P3 | 0 6 3 2 | 0 6 5 2 | |\n| P4 | 0 0 1 4 | 0 6 5 6 | |\nWhat is the content of need matrix,\n2)determine If system is in safe state.\n3)If a request from process P1 arrives for (0,4,2,0)can the request be granted immediately",
+            "marks": 10
+          },
+          {
+            "module": "M3",
+            "co": "CO3",
+            "btl": "L1",
+            "questionText": "Define process synchronization",
+            "marks": 5
+          },
+          {
+            "module": "M3",
+            "co": "CO3",
+            "btl": "L1",
+            "questionText": "What is critical section problem?",
+            "marks": 5
+          }
+        ],
+        "splitB": [
+          {
+            "module": "M3",
+            "co": "CO3",
+            "btl": "L2",
+            "questionText": "Give the solution for readers/writers problem using semaphore",
+            "marks": 10
+          },
+          {
+            "marks": 10,
+            "module": "M3",
+            "co": "CO3",
+            "btl": "L2",
+            "questionText": "what are the necessary conditions for deadlock to occur"
+          }
+        ]
+      },
+      {
+        "moduleNumber": "M4",
+        "splitA": [
+          {
+            "module": "M4",
+            "co": "CO4",
+            "btl": "L2",
+            "questionText": "Explain Translation lookaside buffer(TLB) with a neat diagram",
+            "marks": 9
+          },
+          {
+            "module": "M4",
+            "co": "CO4",
+            "btl": "L2",
+            "questionText": "Explain the concept of swapping. Why is it required?",
+            "marks": 6
+          },
+          {
+            "module": "M4",
+            "co": "CO4",
+            "btl": "L2",
+            "questionText": "Explain internal and external fragmentation with a neat diagram.",
+            "marks": 5
+          }
+        ],
+        "splitB": [
+          {
+            "module": "M4",
+            "co": "CO4",
+            "btl": "L2",
+            "questionText": "Explain the different page replacement algorithms",
+            "marks": 12
+          },
+          {
+            "marks": 8,
+            "module": "M4",
+            "co": "CO4",
+            "btl": "L2",
+            "questionText": "Describe the following allocation algorithms\n1)first fit 2)best fit 3)worst fit"
+          }
+        ]
+      },
+      {
+        "moduleNumber": "M5",
+        "splitA": [
+          {
+            "marks": 5,
+            "module": "M5",
+            "co": "CO5",
+            "btl": "L2",
+            "questionText": "what are the operations possible on file"
+          },
+          {
+            "marks": 5,
+            "module": "M5",
+            "co": "CO5",
+            "btl": "L2",
+            "questionText": "List the common file types along with its extentions and functions"
+          },
+          {
+            "marks": 10,
+            "module": "M5",
+            "co": "CO5",
+            "btl": "L2",
+            "questionText": "Describe the working of following allocation methods\n1)contigious 2)linked"
+          }
+        ],
+        "splitB": [
+          {
+            "module": "M5",
+            "co": "CO5",
+            "btl": "L2",
+            "questionText": "Describe the working of following allocation methods\n1)contigious 2)indexed",
+            "marks": 10
+          },
+          {
+            "module": "M5",
+            "co": "CO5",
+            "btl": "L2",
+            "questionText": "Explain the various disc scheduling algorithm with example",
+            "marks": 10
+          }
+        ]
+      }
+    ]
+  }
+}
