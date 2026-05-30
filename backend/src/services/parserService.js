@@ -133,7 +133,7 @@ DOCUMENT TEXT:
 ${markdown}`;
 
     const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-2.5-flash',
       contents: prompt
     });
 
@@ -175,7 +175,7 @@ CRITICAL: If a question contains a table followed by sub-questions (e.g., "1) Wh
 Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.`;
 
     const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-2.5-flash',
       contents: [
         { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
         prompt
