@@ -77,14 +77,17 @@ export default function ExamDashboard() {
       const pdfUrl = res.data.url;
       alert('Final paper securely saved to Supabase!\nURL: ' + pdfUrl);
       
-      // Automatically download the PDF
+      // Automatically download the PDF by fetching it as a blob
+      const pdfResponse = await axios.get(pdfUrl, { responseType: 'blob' });
+      const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = pdfUrl;
+      link.href = url;
       link.download = `${draftPaper.courseTitle.replace(/\s+/g, '_')}_Final.pdf`;
-      link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 
       setGenerateStatus('success');
     } catch (error) {

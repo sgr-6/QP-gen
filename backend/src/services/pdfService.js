@@ -39,14 +39,18 @@ const generatePaperHTML = (paper) => {
       }
       .q-text {
         text-align: left;
-        max-width: 0; /* Magic trick: max-width: 0 on table cell forces it to respect width percentage */
         overflow: hidden;
       }
       .q-text table {
         width: 100%;
         table-layout: fixed;
         word-wrap: break-word;
+        word-break: break-word;
         font-size: 10pt;
+      }
+      .q-text th, .q-text td {
+        word-break: break-word;
+        overflow-wrap: break-word;
       }
       .q-text img {
         max-width: 100%;
