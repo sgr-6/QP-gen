@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle } from 'lucide-react';
 import axios from 'axios';
-import { marked } from 'marked';
+import MarkdownIt from 'markdown-it';
+const md = new MarkdownIt();
 
 export default function ExamDashboard() {
   const [activeTab, setActiveTab] = useState('upload');
@@ -358,7 +359,7 @@ export default function ExamDashboard() {
                               <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
                               <td 
                                 className="border border-black p-2 markdown-body"
-                                dangerouslySetInnerHTML={{ __html: marked.parse(q.questionText || '') }}
+                                dangerouslySetInnerHTML={{ __html: md.render(q.questionText || '') }}
                               />
                               <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
                               <td className="border border-black p-2 text-center">{q.co}</td>
@@ -377,7 +378,7 @@ export default function ExamDashboard() {
                               <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
                               <td 
                                 className="border border-black p-2 markdown-body"
-                                dangerouslySetInnerHTML={{ __html: marked.parse(q.questionText || '') }}
+                                dangerouslySetInnerHTML={{ __html: md.render(q.questionText || '') }}
                               />
                               <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
                               <td className="border border-black p-2 text-center">{q.co}</td>
