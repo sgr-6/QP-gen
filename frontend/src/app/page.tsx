@@ -186,7 +186,9 @@ export default function ExamDashboard() {
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="mb-8">
                 <h3 className="text-3xl font-bold text-white mb-2 tracking-tight">Data Ingestion</h3>
-                <p className="text-gray-400">Upload unstructured question banks (PDF, DOCX, CSV, XLSX). The AI normalization layer will automatically infer missing Bloom's Taxonomy and Course Outcomes.</p>
+                <p className="text-gray-400 text-sm mb-6 max-w-3xl">
+                  Upload DOCX. The AI normalization layer will automatically infer missing Bloom's Taxonomy and Course Outcomes.
+                </p>
               </div>
 
               <div className="bg-[#161616] border border-gray-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
@@ -222,7 +224,7 @@ export default function ExamDashboard() {
                           <>
                             <UploadCloud className="w-10 h-10 text-gray-500 mb-3 group-hover:text-blue-400 transition-colors" />
                             <p className="mb-2 text-sm text-gray-400"><span className="font-semibold text-blue-400">Click to upload</span> or drag and drop</p>
-                            <p className="text-xs text-gray-600">CSV, XLSX, DOCX, or PDF</p>
+                            <p className="text-sm text-gray-400 font-mono mt-4">DOCX format only</p>
                           </>
                         )}
                       </div>
