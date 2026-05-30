@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { generateDraft, downloadPdf, saveFinalPaper } = require('../controllers/draftController');
+const { generateDraft, downloadPdf, saveFinalPaper, downloadDraft } = require('../controllers/draftController');
 
 const upload = multer({ dest: 'uploads/' });
 
