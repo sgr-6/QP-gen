@@ -1,6 +1,6 @@
 const admin = require('firebase-admin');
 const MarkdownIt = require('markdown-it');
-const md = new MarkdownIt({ breaks: true });
+const md = new MarkdownIt({ html: true, breaks: true });
 
 /**
  * Core Algorithm for Paper Generation:
