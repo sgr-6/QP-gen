@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle, Printer } from 'lucide-react';
+import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle, Printer, Home, Bookmark, MessageSquare, Folder, User } from 'lucide-react';
 import axios from 'axios';
 
 export default function ExamDashboard() {
@@ -24,7 +24,6 @@ export default function ExamDashboard() {
     formData.append('courseTitle', courseTitle);
 
     try {
-      // Pointing to our Express backend
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       const res = await axios.post(`${baseUrl}/api/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -56,7 +55,6 @@ export default function ExamDashboard() {
       
       setDraftPaper(res.data.paper);
       setGenerateStatus('success');
-      // Do not reset status so the paper stays visible
     } catch (error: any) {
       console.error('Generation error:', error);
       setErrorMessage(error.response?.data?.error || 'Failed to generate paper. Check if the course title matches the uploaded database.');
@@ -74,11 +72,10 @@ export default function ExamDashboard() {
       const res = await axios.post(`${baseUrl}/api/save-final-paper`, { paper: draftPaper });
 
       const pdfUrl = res.data.url;
-      alert('Final paper securely saved to Supabase!\nURL: ' + pdfUrl);
+      alert('Final paper securely saved to Supabase!\\nURL: ' + pdfUrl);
       
-      // Automatically download the PDF using Supabase's force download parameter
       const link = document.createElement('a');
-      link.href = pdfUrl + "?download=" + encodeURIComponent(`${draftPaper.courseTitle.replace(/\s+/g, '_')}_Final.pdf`);
+      link.href = pdfUrl + "?download=" + encodeURIComponent(`${draftPaper.courseTitle.replace(/\\s+/g, '_')}_Final.pdf`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -98,14 +95,13 @@ export default function ExamDashboard() {
       setGenerateStatus('generating');
       
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      // We can use the same route but maybe add a flag, or just use a new route
       const res = await axios.post(`${baseUrl}/api/download-draft`, { paper: draftPaper }, { responseType: 'blob' });
       
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${draftPaper.courseTitle.replace(/\s+/g, '_')}_Draft.pdf`;
+      link.download = `${draftPaper.courseTitle.replace(/\\s+/g, '_')}_Draft.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -121,141 +117,120 @@ export default function ExamDashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-gray-100 font-sans overflow-hidden">
+    <div className="app-container">
       {/* Sidebar */}
-      <aside className="w-64 bg-[#111111] border-r border-gray-800 flex flex-col justify-between hidden md:flex">
-        <div>
-          <div className="p-6 border-b border-gray-800">
-            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 tracking-tight">
-              SJB QP Gen
-            </h1>
-            <p className="text-xs text-gray-500 mt-1 uppercase tracking-wider font-semibold">Exam Section</p>
-          </div>
-          <nav className="p-4 space-y-2">
-            <button 
-              onClick={() => setActiveTab('upload')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'upload' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.1)]' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
-            >
-              <UploadCloud size={20} />
-              <span className="font-medium">Bank Upload</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('generate')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'generate' ? 'bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
-            >
-              <FileText size={20} />
-              <span className="font-medium">Generate Draft</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('analytics')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === 'analytics' ? 'bg-purple-600/10 text-purple-400 border border-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.1)]' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
-            >
-              <BarChart3 size={20} />
-              <span className="font-medium">Analytics</span>
-            </button>
-          </nav>
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          SJB QP Gen
         </div>
-        <div className="p-4 border-t border-gray-800">
-          <button className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors">
-            <LogOut size={20} />
-            <span className="font-medium">Sign Out</span>
+        <nav className="nav-menu">
+          <button 
+            onClick={() => setActiveTab('upload')}
+            className={`nav-item ${activeTab === 'upload' ? 'active' : ''}`}
+          >
+            <UploadCloud size={18} /> Bank Upload
+          </button>
+          <button 
+            onClick={() => setActiveTab('generate')}
+            className={`nav-item ${activeTab === 'generate' ? 'active' : ''}`}
+          >
+            <FileText size={18} /> Generate Draft
+          </button>
+          <button 
+            onClick={() => setActiveTab('analytics')}
+            className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
+          >
+            <BarChart3 size={18} /> Analytics
+          </button>
+        </nav>
+        <div style={{ flex: 1 }}></div>
+        <div className="nav-menu">
+          <button className="nav-item" style={{ color: '#E53E3E' }}>
+            <LogOut size={18} /> Sign Out
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative overflow-y-auto">
+      <main className="main-content">
         
         {/* Top Header */}
-        <header className="h-16 border-b border-gray-800 flex items-center justify-between px-8 bg-[#111111]/80 backdrop-blur-md sticky top-0 z-10">
-          <h2 className="text-lg font-semibold text-gray-200 capitalize">
+        <header className="header">
+          <h2 className="header-title">
             {activeTab.replace('-', ' ')}
           </h2>
-          <div className="flex items-center gap-4">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-emerald-500 flex items-center justify-center text-sm font-bold shadow-lg shadow-emerald-500/20">
+          <div className="user-profile">
+            <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-main)' }}>Exam Section</span>
+            <div className="avatar">
               ES
             </div>
           </div>
         </header>
 
         {/* Tab Contents */}
-        <div className="p-8 max-w-5xl mx-auto w-full">
+        <div className="content-area">
           
           {/* UPLOAD TAB */}
           {activeTab === 'upload' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="mb-8">
-                <h3 className="text-3xl font-bold text-white mb-2 tracking-tight">Data Ingestion</h3>
-                <p className="text-gray-400 text-sm mb-6 max-w-3xl">
+            <div className="animate-in">
+              <div style={{ marginBottom: '32px' }}>
+                <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>Data Ingestion</h3>
+                <p style={{ color: 'var(--text-muted)' }}>
                   Upload DOCX. The AI normalization layer will automatically infer missing Bloom's Taxonomy and Course Outcomes.
                 </p>
               </div>
 
-              <div className="bg-[#161616] border border-gray-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
-                {/* Decorative glowing orb */}
-                <div className="absolute -top-32 -right-32 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-                <form onSubmit={handleUpload} className="space-y-6 relative z-10">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Course Title</label>
+              <div className="card">
+                <form onSubmit={handleUpload}>
+                  <div className="input-group">
+                    <label className="input-label">Course Title</label>
                     <input 
                       type="text" 
                       required
                       value={courseTitle}
                       onChange={(e) => setCourseTitle(e.target.value)}
                       placeholder="e.g. Data Structures and Applications"
-                      className="w-full bg-[#0a0a0a] border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                      className="pill-input"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Source File</label>
-                    <label className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300
-                      ${file ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-gray-700 hover:border-blue-500/50 hover:bg-blue-500/5 bg-[#0a0a0a]'}
-                    `}>
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        {file ? (
-                          <>
-                            <CheckCircle className="w-10 h-10 text-emerald-400 mb-3" />
-                            <p className="mb-2 text-sm text-gray-300 font-medium">{file.name}</p>
-                            <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</p>
-                          </>
-                        ) : (
-                          <>
-                            <UploadCloud className="w-10 h-10 text-gray-500 mb-3 group-hover:text-blue-400 transition-colors" />
-                            <p className="mb-2 text-sm text-gray-400"><span className="font-semibold text-blue-400">Click to upload</span> or drag and drop</p>
-                            <p className="text-sm text-gray-400 font-mono mt-4">DOCX format only</p>
-                          </>
-                        )}
-                      </div>
+                  <div className="input-group">
+                    <label className="input-label">Source File</label>
+                    <label className={`drag-drop-zone ${file ? 'has-file' : ''}`}>
+                      {file ? (
+                        <div className="text-center" style={{ color: '#38A169' }}>
+                          <CheckCircle size={40} style={{ margin: '0 auto 12px' }} />
+                          <p style={{ fontWeight: 600 }}>{file.name}</p>
+                          <p style={{ fontSize: '12px', marginTop: '4px' }}>{(file.size / 1024).toFixed(2)} KB</p>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <UploadCloud size={40} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
+                          <p style={{ color: 'var(--text-main)', fontWeight: 500 }}>Click to upload or drag and drop</p>
+                          <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '8px' }}>DOCX format only</p>
+                        </div>
+                      )}
                       <input 
                         type="file" 
-                        className="hidden" 
+                        style={{ display: 'none' }} 
                         accept=".csv, .xlsx, .docx, .pdf"
                         onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
                       />
                     </label>
                   </div>
 
-                  <div className="pt-4">
+                  <div style={{ marginTop: '32px' }}>
                     <button 
                       type="submit" 
                       disabled={uploadStatus === 'uploading' || !file || !courseTitle}
-                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-4 rounded-xl shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+                      className="btn-primary"
                     >
                       {uploadStatus === 'uploading' ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          Parsing & Normalizing via AI...
-                        </span>
+                        <span>Parsing & Normalizing via AI...</span>
                       ) : uploadStatus === 'success' ? (
-                        <span className="flex items-center justify-center gap-2 text-emerald-100">
-                          <CheckCircle className="w-5 h-5" /> Bank Ingested Successfully!
-                        </span>
+                        <span>Bank Ingested Successfully!</span>
                       ) : uploadStatus === 'error' ? (
-                        <span className="flex items-center justify-center gap-2 text-red-100">
-                          <AlertCircle className="w-5 h-5" /> Ingestion Failed
-                        </span>
+                        <span>Ingestion Failed</span>
                       ) : (
                         'Ingest Question Bank'
                       )}
@@ -268,81 +243,83 @@ export default function ExamDashboard() {
 
           {/* GENERATE TAB */}
           {activeTab === 'generate' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="mb-8">
-                <h3 className="text-3xl font-bold text-white mb-2 tracking-tight">Paper Generation</h3>
-                <p className="text-gray-400">Trigger the core logic engine to build a 5-module, academically rigorous draft complying with strict 20-mark limits and 30% L1/L2 weighting.</p>
+            <div className="animate-in">
+              <div style={{ marginBottom: '32px' }}>
+                <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>Paper Generation</h3>
+                <p style={{ color: 'var(--text-muted)' }}>Trigger the core logic engine to build a 5-module, academically rigorous draft.</p>
               </div>
               
-              {/* Generation UI Placeholder for now */}
-               <div className="bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col items-center justify-center min-h-[400px] text-center">
-                 <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4">
-                    <FileText className="w-8 h-8 text-emerald-400" />
-                 </div>
-                 <h4 className="text-xl font-bold text-white mb-2">Ready to Draft</h4>
-                 <p className="text-gray-500 max-w-md mb-8">Enter the EXACT Course Title you uploaded to generate your paper.</p>
-                 
-                 <div className="flex w-full max-w-md gap-3">
-                    <input 
-                      type="text" 
-                      value={generateTitle}
-                      onChange={(e) => setGenerateTitle(e.target.value)}
-                      placeholder="Course Title (e.g., Computer Organization)"
-                      className="flex-1 bg-[#0a0a0a] border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500"
-                    />
-                    <button 
-                      onClick={handleGenerate}
-                      disabled={generateStatus === 'generating' || !generateTitle}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-emerald-500/20 transition-colors disabled:opacity-50"
-                    >
-                      {generateStatus === 'generating' ? 'Drafting...' : 'Draft Paper'}
-                    </button>
-                 </div>
-                 {generateStatus === 'error' && (
-                   <p className="text-red-400 mt-4 text-sm">{errorMessage}</p>
-                 )}
+              <div className="card text-center" style={{ padding: '60px 40px' }}>
+                <div style={{ background: 'var(--primary-light)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: 'var(--primary-purple)' }}>
+                  <FileText size={32} />
+                </div>
+                <h4 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>Ready to Draft</h4>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Enter the EXACT Course Title you uploaded to generate your paper.</p>
+                
+                <div style={{ display: 'flex', gap: '16px', maxWidth: '500px', margin: '0 auto' }}>
+                  <input 
+                    type="text" 
+                    value={generateTitle}
+                    onChange={(e) => setGenerateTitle(e.target.value)}
+                    placeholder="Course Title (e.g. Computer Organization)"
+                    className="pill-input"
+                    style={{ flex: 1 }}
+                  />
+                  <button 
+                    onClick={handleGenerate}
+                    disabled={generateStatus === 'generating' || !generateTitle}
+                    className="btn-primary"
+                    style={{ width: 'auto', padding: '14px 32px' }}
+                  >
+                    {generateStatus === 'generating' ? 'Drafting...' : 'Draft Paper'}
+                  </button>
+                </div>
+                {generateStatus === 'error' && (
+                  <p className="status-text status-error">{errorMessage}</p>
+                )}
               </div>
 
               {draftPaper && (
-                <div id="printable-paper" className="mt-12 bg-white text-black p-10 rounded-xl shadow-2xl printable-paper relative">
-                  <div className="flex justify-between items-center mb-8 border-b pb-4 print:hidden">
-                    <h3 className="text-2xl font-bold text-gray-800">Generated Draft</h3>
-                    <div className="flex gap-3">
-                      <button 
-                        onClick={handleDownloadDraft}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium shadow flex items-center gap-2"
-                      >
-                        <Printer size={18} /> Download Draft
-                      </button>
-                      <button 
-                        onClick={handleSaveFinalPaper}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-medium shadow flex items-center gap-2"
-                      >
-                        <CheckCircle size={18} /> Publish Final Paper
-                      </button>
-                    </div>
+                <div className="printable-paper">
+                  <div className="paper-actions print-hidden">
+                    <button 
+                      onClick={handleDownloadDraft}
+                      className="btn-secondary"
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <Printer size={16} /> Download Draft
+                    </button>
+                    <button 
+                      onClick={handleSaveFinalPaper}
+                      className="btn-primary"
+                      style={{ width: 'auto', padding: '12px 24px', fontSize: '14px' }}
+                    >
+                      <CheckCircle size={16} /> Publish Final Paper
+                    </button>
                   </div>
                   
-                  <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold uppercase border-b-2 border-black inline-block pb-2">{draftPaper.courseTitle}</h2>
+                  <div className="text-center" style={{ marginBottom: '32px' }}>
+                    <h2 style={{ fontSize: '24px', fontWeight: 700, textTransform: 'uppercase', borderBottom: '2px solid black', display: 'inline-block', paddingBottom: '8px' }}>
+                      {draftPaper.courseTitle}
+                    </h2>
                   </div>
 
-                  <table className="w-full border-separate border-spacing-0 border border-black mb-8">
+                  <table>
                     <thead>
-                      <tr className="bg-gray-200">
-                        <th className="border border-black p-2 w-[5%]">Q#</th>
-                        <th className="border border-black p-2 w-[5%]">Sub</th>
-                        <th className="border border-black p-2 w-[60%] text-left">Question Text</th>
-                        <th className="border border-black p-2 w-[10%]">Marks</th>
-                        <th className="border border-black p-2 w-[10%]">CO</th>
-                        <th className="border border-black p-2 w-[10%]">RBT</th>
+                      <tr>
+                        <th style={{ width: '5%' }}>Q#</th>
+                        <th style={{ width: '5%' }}>Sub</th>
+                        <th style={{ width: '60%' }}>Question Text</th>
+                        <th style={{ width: '10%' }}>Marks</th>
+                        <th style={{ width: '10%' }}>CO</th>
+                        <th style={{ width: '10%' }}>RBT</th>
                       </tr>
                     </thead>
                     <tbody>
                       {draftPaper.modules.map((mod: any, mIdx: number) => (
                         <React.Fragment key={mIdx}>
                           <tr>
-                            <td colSpan={6} className="border border-black p-2 font-bold text-center bg-gray-100">
+                            <td colSpan={6} className="text-center" style={{ fontWeight: 700, backgroundColor: '#F8F9FA' }}>
                               Module {mod.moduleNumber}
                             </td>
                           </tr>
@@ -350,66 +327,46 @@ export default function ExamDashboard() {
                           {/* Split A */}
                           {mod.splitA.map((q: any, i: number) => (
                             <tr key={'a'+i}>
-                              <td className="border border-black p-2 text-center">{i === 0 ? (mIdx*2 + 1) : ''}</td>
-                              <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
-                              <td 
-                                className="border border-black p-2 markdown-body"
-                                dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }}
-                              />
-                              <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
-                              <td className="border border-black p-2 text-center">{q.co}</td>
-                              <td className="border border-black p-2 text-center">{q.btl}</td>
+                              <td className="text-center">{i === 0 ? (mIdx*2 + 1) : ''}</td>
+                              <td className="text-center">{String.fromCharCode(97 + i)})</td>
+                              <td dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} />
+                              <td className="text-center">[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="text-center">{q.co}</td>
+                              <td className="text-center">{q.btl}</td>
                             </tr>
                           ))}
 
                           <tr>
-                            <td colSpan={6} className="border border-black p-2 font-bold text-center">OR</td>
+                            <td colSpan={6} className="text-center" style={{ fontWeight: 700 }}>OR</td>
                           </tr>
 
                           {/* Split B */}
                           {mod.splitB.map((q: any, i: number) => (
                             <tr key={'b'+i}>
-                              <td className="border border-black p-2 text-center">{i === 0 ? (mIdx*2 + 2) : ''}</td>
-                              <td className="border border-black p-2 text-center">{String.fromCharCode(97 + i)})</td>
-                              <td 
-                                className="border border-black p-2 markdown-body"
-                                dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }}
-                              />
-                              <td className="border border-black p-2 text-center">[{String(q.marks).padStart(2, '0')}]</td>
-                              <td className="border border-black p-2 text-center">{q.co}</td>
-                              <td className="border border-black p-2 text-center">{q.btl}</td>
+                              <td className="text-center">{i === 0 ? (mIdx*2 + 2) : ''}</td>
+                              <td className="text-center">{String.fromCharCode(97 + i)})</td>
+                              <td dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} />
+                              <td className="text-center">[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="text-center">{q.co}</td>
+                              <td className="text-center">{q.btl}</td>
                             </tr>
                           ))}
                         </React.Fragment>
                       ))}
                     </tbody>
                   </table>
-                  <div className="text-center font-bold text-xl mt-8">*********</div>
+                  <div className="text-center" style={{ fontWeight: 700, fontSize: '20px', marginTop: '32px' }}>*********</div>
                   
                   <style dangerouslySetInnerHTML={{__html: `
                     @media print {
-                      body * {
-                        visibility: hidden;
-                      }
-                      .printable-paper, .printable-paper * {
-                        visibility: visible;
-                      }
+                      body * { visibility: hidden; }
+                      .printable-paper, .printable-paper * { visibility: visible; }
                       .printable-paper {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        padding: 0;
-                        box-shadow: none;
+                        position: absolute; left: 0; top: 0; width: 100%;
+                        padding: 0; box-shadow: none; margin: 0;
                       }
+                      .print-hidden { display: none !important; }
                     }
-                    /* Basic Markdown Styles */
-                    table { border-collapse: separate !important; border-spacing: 0 !important; }
-                    .markdown-body p { margin-bottom: 0.5rem; }
-                    .markdown-body p:last-child { margin-bottom: 0; }
-                    .markdown-body img { max-width: 100%; height: auto; display: block; margin: 0.5rem 0; }
-                    .markdown-body table { width: 100%; border-collapse: separate !important; border-spacing: 0 !important; margin-bottom: 0.5rem; }
-                    .markdown-body th, .markdown-body td { border: 1px solid #000; padding: 4px; text-align: left; }
                   `}} />
                 </div>
               )}
@@ -418,20 +375,24 @@ export default function ExamDashboard() {
 
           {/* ANALYTICS TAB */}
           {activeTab === 'analytics' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="mb-8">
-                <h3 className="text-3xl font-bold text-white mb-2 tracking-tight">NBA / ABET Compliance</h3>
-                <p className="text-gray-400">Live visualization of Bloom's Taxonomy and Course Outcome distributions across generated drafts.</p>
+            <div className="animate-in">
+              <div style={{ marginBottom: '32px' }}>
+                <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>NBA / ABET Compliance</h3>
+                <p style={{ color: 'var(--text-muted)' }}>Live visualization of Bloom's Taxonomy and Course Outcome distributions across generated drafts.</p>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-[#161616] border border-gray-800 rounded-3xl p-6 h-80 flex flex-col items-center justify-center text-gray-500">
-                   <BarChart3 className="w-12 h-12 mb-3 opacity-20" />
-                   <p>BTL Distribution Chart Loading...</p>
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                <div className="card" style={{ flex: '1 1 300px', height: '320px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                   <div style={{ background: 'var(--primary-light)', padding: '24px', borderRadius: '50%', marginBottom: '20px' }}>
+                     <BarChart3 size={40} color="var(--primary-purple)" style={{ opacity: 0.5 }} />
+                   </div>
+                   <p style={{ color: 'var(--text-muted)', fontWeight: 500 }}>BTL Distribution Chart Loading...</p>
                 </div>
-                <div className="bg-[#161616] border border-gray-800 rounded-3xl p-6 h-80 flex flex-col items-center justify-center text-gray-500">
-                   <BarChart3 className="w-12 h-12 mb-3 opacity-20" />
-                   <p>CO Distribution Chart Loading...</p>
+                <div className="card" style={{ flex: '1 1 300px', height: '320px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                   <div style={{ background: 'var(--primary-light)', padding: '24px', borderRadius: '50%', marginBottom: '20px' }}>
+                     <BarChart3 size={40} color="var(--primary-purple)" style={{ opacity: 0.5 }} />
+                   </div>
+                   <p style={{ color: 'var(--text-muted)', fontWeight: 500 }}>CO Distribution Chart Loading...</p>
                 </div>
               </div>
             </div>
@@ -441,27 +402,27 @@ export default function ExamDashboard() {
       </main>
 
       {/* Mobile Navigation Bar */}
-      <div className="md:hidden fixed bottom-0 w-full bg-[#111111] border-t border-gray-800 flex justify-around items-center p-3 z-50 pb-safe">
+      <div className="mobile-nav">
         <button 
           onClick={() => setActiveTab('upload')}
-          className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'upload' ? 'text-blue-400' : 'text-gray-500'}`}
+          className={`mobile-nav-btn ${activeTab === 'upload' ? 'active' : ''}`}
         >
-          <UploadCloud size={24} />
-          <span className="text-[10px] font-medium">Ingest</span>
+          <UploadCloud size={20} />
+          <span>Ingest</span>
         </button>
         <button 
           onClick={() => setActiveTab('generate')}
-          className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'generate' ? 'text-emerald-400' : 'text-gray-500'}`}
+          className={`mobile-nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
         >
-          <FileText size={24} />
-          <span className="text-[10px] font-medium">Draft</span>
+          <FileText size={20} />
+          <span>Draft</span>
         </button>
         <button 
           onClick={() => setActiveTab('analytics')}
-          className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'analytics' ? 'text-purple-400' : 'text-gray-500'}`}
+          className={`mobile-nav-btn ${activeTab === 'analytics' ? 'active' : ''}`}
         >
-          <BarChart3 size={24} />
-          <span className="text-[10px] font-medium">Analytics</span>
+          <BarChart3 size={20} />
+          <span>Analytics</span>
         </button>
       </div>
     </div>
