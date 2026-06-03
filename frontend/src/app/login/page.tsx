@@ -46,7 +46,7 @@ export default function LoginPage() {
       setStep("otp");
     } catch (err: any) {
       console.error(err);
-      setError("Failed to send OTP via EmailJS. Check your template configuration.");
+      setError(`EmailJS Error: ${err.text || err.message || JSON.stringify(err)}`);
     } finally {
       setLoading(false);
     }
