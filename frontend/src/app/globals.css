@@ -307,12 +307,21 @@ table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 24px;
+  table-layout: fixed;
 }
 
 th, td {
   border: 1px solid #E2E8F0;
   padding: 12px;
   text-align: left;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+td img, td table {
+  max-width: 100%;
+  height: auto;
 }
 
 th {
