@@ -3,6 +3,9 @@
 import React, { useState } from 'react';
 import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle, Printer, Home, Bookmark, MessageSquare, Folder, User } from 'lucide-react';
 import axios from 'axios';
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase";
 
 export default function ExamDashboard() {
   const [activeTab, setActiveTab] = useState('upload');
@@ -13,6 +16,27 @@ export default function ExamDashboard() {
   const [generateStatus, setGenerateStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
   const [draftPaper, setDraftPaper] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const { currentUser, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !currentUser) {
+      router.push("/login");
+    }
+  }, [currentUser, loading, router]);
+
+  const handleSignOut = async () => {
+    await auth.signOut();
+  };
+
+  if (loading || !currentUser) {
+    return (
+      <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ color: 'var(--primary-purple)', fontSize: '18px', fontWeight: 600 }}>Loading Dashboard...</div>
+      </div>
+    );
+  }
   
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,7 +169,7 @@ export default function ExamDashboard() {
         </nav>
         <div style={{ flex: 1 }}></div>
         <div className="nav-menu">
-          <button className="nav-item" style={{ color: '#E53E3E' }}>
+          <button className="nav-item" style={{ color: '#E53E3E' }} onClick={handleSignOut}>
             <LogOut size={18} /> Sign Out
           </button>
         </div>
