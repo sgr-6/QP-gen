@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle, Printer, Home, Bookmark, MessageSquare, Folder, User } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from "@/context/AuthContext";
