@@ -34,8 +34,8 @@ export default function LoginPage() {
 
     try {
       await emailjs.send(
-        "service_82yko7d",    // SERVICE_ID
-        "template_ubn0hyg",   // TEMPLATE_ID
+        "service_os3zpz3",    // SERVICE_ID
+        "template_hfil1kp",   // TEMPLATE_ID
         {
           otp: newOtp,
           to_email: email,
