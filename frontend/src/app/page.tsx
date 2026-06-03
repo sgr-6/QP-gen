@@ -5,7 +5,6 @@ import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertC
 import axios from 'axios';
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase";
 
 export default function ExamDashboard() {
   const [activeTab, setActiveTab] = useState('upload');
@@ -17,7 +16,7 @@ export default function ExamDashboard() {
   const [draftPaper, setDraftPaper] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const { currentUser, loading } = useAuth();
+  const { currentUser, loading, logout } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -26,8 +25,8 @@ export default function ExamDashboard() {
     }
   }, [currentUser, loading, router]);
 
-  const handleSignOut = async () => {
-    await auth.signOut();
+  const handleSignOut = () => {
+    logout();
   };
 
   if (loading || !currentUser) {

@@ -9,9 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "axios": "^1.16.1",
     "clsx": "^2.1.1",
-    "firebase": "^12.14.0",
     "framer-motion": "^12.40.0",
     "html2pdf.js": "^0.14.0",
     "lucide-react": "^1.16.0",
