@@ -23,7 +23,7 @@ export default function LoginPage() {
   const router = useRouter();
 
   // Hardcoded Valid User
-  const VALID_EMAIL = "appisagar25@gmail.com";
+  const VALID_EMAIL = "sjbisedept@gmail.com";
   const VALID_PASS = "sagar789";
 
   useEffect(() => {
