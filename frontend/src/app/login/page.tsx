@@ -57,6 +57,7 @@ export default function LoginPage() {
         {
           otp: newOtp,
           to_email: email,
+          email: email,
         },
         "jk4ST5pagxhxyr_xK"   // PUBLIC_KEY
       );
