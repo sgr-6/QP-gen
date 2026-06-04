@@ -24,7 +24,7 @@ export default function LoginPage() {
 
   // Hardcoded Valid User
   const VALID_EMAIL = "sjbisedept@gmail.com";
-  const VALID_PASS = "sagar789";
+  const VALID_PASS = "qpgen@789";
 
   useEffect(() => {
     if (currentUser) {
