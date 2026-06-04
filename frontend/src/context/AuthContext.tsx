@@ -25,8 +25,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
 
   useEffect(() => {
-    // TEMPORARY BYPASS: Automatically log everyone in
-    setCurrentUser("guest@sjb.edu");
+    // Check local storage on initial load
+    const storedUser = localStorage.getItem("qpgen_user");
+    if (storedUser) {
+      setCurrentUser(storedUser);
+    }
     setLoading(false);
   }, []);
 

@@ -6,15 +6,25 @@ import { useAuth } from "@/context/AuthContext";
 import emailjs from '@emailjs/browser';
 
 export default function LoginPage() {
+  // Credentials
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  
+  // OTP
   const [enteredOtp, setEnteredOtp] = useState("");
   const [generatedOtp, setGeneratedOtp] = useState("");
-  const [step, setStep] = useState<"email" | "otp">("email");
+  
+  // UI State
+  const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const { currentUser, login } = useAuth();
   const router = useRouter();
+
+  // Hardcoded Valid User
+  const VALID_EMAIL = "appisagar25@gmail.com";
+  const VALID_PASS = "sagar789";
 
   useEffect(() => {
     if (currentUser) {
@@ -22,20 +32,28 @@ export default function LoginPage() {
     }
   }, [currentUser, router]);
 
-  const handleSendOtp = async (e: React.FormEvent) => {
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    if (!email || !password) return;
     setLoading(true);
     setError("");
 
-    // Generate 6-digit OTP
+    // 1. Verify Credentials
+    if (email.toLowerCase() !== VALID_EMAIL || password !== VALID_PASS) {
+      setError("Invalid email or password.");
+      setLoading(false);
+      return;
+    }
+
+    // 2. Generate 6-digit OTP
     const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOtp(newOtp);
 
+    // 3. Send OTP via EmailJS
     try {
       await emailjs.send(
-        "service_os3zpz3",    // SERVICE_ID
-        "template_hfil1kp",   // TEMPLATE_ID
+        "service_os3zpz3",    // SERVICE_ID (Qp gen)
+        "template_fg58evu",   // TEMPLATE_ID
         {
           otp: newOtp,
           to_email: email,
@@ -72,14 +90,18 @@ export default function LoginPage() {
       <div className="card" style={{ maxWidth: "400px", width: "100%" }}>
         <div className="text-center" style={{ marginBottom: "24px" }}>
           <div className="sidebar-logo" style={{ padding: 0, marginBottom: "8px" }}>SJB QP Gen</div>
-          <h2 style={{ fontSize: "20px", fontWeight: 600 }}>Welcome Back</h2>
-          <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>Sign in with Email OTP</p>
+          <h2 style={{ fontSize: "20px", fontWeight: 600 }}>
+            {step === "credentials" ? "Welcome Back" : "Two-Factor Auth"}
+          </h2>
+          <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>
+            {step === "credentials" ? "Sign in to your account" : "Enter the OTP sent to your email"}
+          </p>
         </div>
 
         {error && <div className="status-error text-center" style={{ marginBottom: "16px", padding: "8px", background: "#FFF5F5", borderRadius: "8px" }}>{error}</div>}
 
-        {step === "email" ? (
-          <form onSubmit={handleSendOtp}>
+        {step === "credentials" ? (
+          <form onSubmit={handleCredentialsSubmit}>
             <div className="input-group">
               <label className="input-label">Email Address</label>
               <input
@@ -91,8 +113,21 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <button type="submit" className="btn-primary" disabled={loading || !email}>
-              {loading ? "Sending..." : "Send OTP"}
+            
+            <div className="input-group">
+              <label className="input-label">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="pill-input"
+                required
+              />
+            </div>
+
+            <button type="submit" className="btn-primary" disabled={loading || !email || !password}>
+              {loading ? "Verifying..." : "Sign In"}
             </button>
           </form>
         ) : (
@@ -109,15 +144,15 @@ export default function LoginPage() {
               />
             </div>
             <button type="submit" className="btn-primary" disabled={loading || !enteredOtp}>
-              {loading ? "Verifying..." : "Verify & Sign In"}
+              {loading ? "Verifying..." : "Verify & Access Dashboard"}
             </button>
             <div className="text-center" style={{ marginTop: "16px" }}>
               <button 
                 type="button" 
-                onClick={() => { setStep("email"); setEnteredOtp(""); }} 
+                onClick={() => { setStep("credentials"); setEnteredOtp(""); setPassword(""); }} 
                 style={{ background: "none", border: "none", color: "var(--primary-purple)", cursor: "pointer", fontSize: "14px", fontWeight: 500 }}
               >
-                Change Email Address
+                Back to Login
               </button>
             </div>
           </form>
