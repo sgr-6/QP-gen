@@ -5,6 +5,9 @@ import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertC
 import axios from 'axios';
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import { motion } from 'framer-motion';
+import ExamSelector from '@/components/ExamSelector';
+import { ExamType, EXAM_CONFIGS } from '@/lib/types';
 
 export default function ExamDashboard() {
   const [activeTab, setActiveTab] = useState('upload');
@@ -15,6 +18,7 @@ export default function ExamDashboard() {
   const [generateStatus, setGenerateStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
   const [draftPaper, setDraftPaper] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectedExamType, setSelectedExamType] = useState<ExamType | null>(null);
 
   const { currentUser, loading, logout } = useAuth();
   const router = useRouter();
@@ -73,7 +77,11 @@ export default function ExamDashboard() {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       const res = await axios.post(`${baseUrl}/api/generate-draft`, 
-        { courseTitle: generateTitle }
+        { 
+          courseTitle: generateTitle,
+          examType: selectedExamType,
+          examConfig: selectedExamType ? EXAM_CONFIGS[selectedExamType] : null
+        }
       );
       
       setDraftPaper(res.data.paper);
@@ -92,7 +100,10 @@ export default function ExamDashboard() {
       setGenerateStatus('generating');
       
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const res = await axios.post(`${baseUrl}/api/save-final-paper`, { paper: draftPaper });
+      const res = await axios.post(`${baseUrl}/api/save-final-paper`, { 
+        paper: draftPaper,
+        examType: selectedExamType
+      });
 
       const pdfUrl = res.data.url;
       alert('Final paper securely saved to Supabase!\\nURL: ' + pdfUrl);
@@ -269,15 +280,27 @@ export default function ExamDashboard() {
             <div className="animate-in">
               <div style={{ marginBottom: '32px' }}>
                 <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>Paper Generation</h3>
-                <p style={{ color: 'var(--text-muted)' }}>Trigger the core logic engine to build a 5-module, academically rigorous draft.</p>
+                <p style={{ color: 'var(--text-muted)' }}>Trigger the core logic engine to build an academically rigorous draft.</p>
               </div>
+
+              <ExamSelector 
+                selectedType={selectedExamType} 
+                onSelect={setSelectedExamType} 
+              />
               
-              <div className="card text-center" style={{ padding: '60px 40px' }}>
-                <div style={{ background: 'var(--primary-light)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: 'var(--primary-purple)' }}>
-                  <FileText size={32} />
-                </div>
-                <h4 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>Ready to Draft</h4>
-                <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Enter the EXACT Course Title you uploaded to generate your paper.</p>
+              {selectedExamType && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="card text-center" 
+                  style={{ padding: '60px 40px' }}
+                >
+                  <div style={{ background: 'var(--primary-light)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: 'var(--primary-purple)' }}>
+                    <FileText size={32} />
+                  </div>
+                  <h4 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>Ready to Draft</h4>
+                  <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Enter the EXACT Course Title you uploaded to generate your paper.</p>
                 
                 <div style={{ display: 'flex', gap: '16px', maxWidth: '500px', margin: '0 auto' }}>
                   <input 
@@ -300,7 +323,8 @@ export default function ExamDashboard() {
                 {generateStatus === 'error' && (
                   <p className="status-text status-error">{errorMessage}</p>
                 )}
-              </div>
+              </motion.div>
+              )}
 
               {draftPaper && (
                 <div className="printable-paper">
