@@ -217,13 +217,13 @@ export default function ExamDashboard() {
               <div className="card">
                 <form onSubmit={handleUpload}>
                   <div className="input-group">
-                    <label className="input-label">Course Title</label>
+                    <label className="input-label">Course Code</label>
                     <input 
                       type="text" 
                       required
                       value={courseTitle}
                       onChange={(e) => setCourseTitle(e.target.value)}
-                      placeholder="e.g. Data Structures and Applications"
+                      placeholder="e.g. CS101"
                       className="pill-input"
                     />
                   </div>
@@ -300,14 +300,14 @@ export default function ExamDashboard() {
                     <FileText size={32} />
                   </div>
                   <h4 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>Ready to Draft</h4>
-                  <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Enter the EXACT Course Title you uploaded to generate your paper.</p>
+                  <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Enter the EXACT Course Code you uploaded to generate your paper.</p>
                 
                 <div style={{ display: 'flex', gap: '16px', maxWidth: '500px', margin: '0 auto' }}>
                   <input 
                     type="text" 
                     value={generateTitle}
                     onChange={(e) => setGenerateTitle(e.target.value)}
-                    placeholder="Course Title (e.g. Computer Organization)"
+                    placeholder="Course Code (e.g. CS101)"
                     className="pill-input"
                     style={{ flex: 1 }}
                   />
