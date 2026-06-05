@@ -354,7 +354,7 @@ export default function ExamDashboard() {
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width: '5%' }}>Q#</th>
+                        <th style={{ width: '5%' }}>Q No</th>
                         <th style={{ width: '5%' }}>Sub</th>
                         <th style={{ width: '60%' }}>Question Text</th>
                         <th style={{ width: '10%' }}>Marks</th>

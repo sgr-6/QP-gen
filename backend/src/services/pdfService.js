@@ -73,7 +73,7 @@ const generatePaperHTML = (paper) => {
     <table>
       <thead>
         <tr>
-          <th style="width: 5%">Q#</th>
+          <th style="width: 5%">Q No</th>
           <th style="width: 5%">Sub</th>
           <th style="width: 60%">Question Text</th>
           <th style="width: 10%">Marks</th>
@@ -86,11 +86,12 @@ const generatePaperHTML = (paper) => {
 
   let qNumber = 1;
 
-  paper.modules.forEach((mod) => {
+  paper.modules.forEach((mod, idx) => {
+    const headerText = paper.examType === 'internal' ? `Part ${idx + 1}` : `Module ${mod.moduleNumber}`;
     // Module Header
     html += `
       <tr>
-        <td colspan="6" class="module-header">Module ${mod.moduleNumber}</td>
+        <td colspan="6" class="module-header">${headerText}</td>
       </tr>
     `;
 

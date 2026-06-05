@@ -67,6 +67,7 @@ const generatePaper = async (courseTitle, examType = 'semester', examConfig = nu
 
   const paper = {
     courseTitle,
+    examType,
     generatedAt: new Date().toISOString(),
     totalMarks: isInternal ? 50 : 100,
     modules: []
