@@ -12,7 +12,7 @@ const md = new MarkdownIt({ html: true, breaks: true });
  * @param {string} courseTitle 
  * @returns {Promise<Object>} Generated Paper
  */
-const generatePaper = async (courseTitle) => {
+const generatePaper = async (courseTitle, examType = 'semester', examConfig = null) => {
   let allQuestions = [];
 
   if (admin.apps.length > 0) {
@@ -61,21 +61,27 @@ const generatePaper = async (courseTitle) => {
     modulePools[m].push(q);
   });
 
+  const isInternal = examType === 'internal';
+  const targetParts = isInternal ? 2 : 5;
+  const targetMarks = isInternal ? 25 : 20;
+
   const paper = {
     courseTitle,
     generatedAt: new Date().toISOString(),
-    totalMarks: 100,
+    totalMarks: isInternal ? 50 : 100,
     modules: []
   };
 
   let totalL1L2Marks = 0;
 
-  // 3. Generate 5 Modules
-  ['M1', 'M2', 'M3', 'M4', 'M5'].forEach(m => {
+  // 3. Generate Modules
+  const moduleNames = isInternal ? ['M1', 'M2'] : ['M1', 'M2', 'M3', 'M4', 'M5'];
+  
+  moduleNames.forEach(m => {
     const pool = modulePools[m] || [];
     
-    // We need two 20-mark splits for each module (e.g. 1a, 1b OR 2a, 2b)
-    const split1 = buildValidSplit(pool, 20);
+    // We need two splits for each module (e.g. 1a, 1b OR 2a, 2b) with the target marks
+    const split1 = buildValidSplit(pool, targetMarks);
     
     // Remove the questions used in split1 from the pool so split2 gets different questions
     // We compare by questionText because buildValidSplit returns cloned objects
@@ -92,10 +98,10 @@ const generatePaper = async (courseTitle) => {
       }
     }
 
-    const split2 = buildValidSplit(poolForSplit2, 20); 
+    const split2 = buildValidSplit(poolForSplit2, targetMarks); 
 
     if (!split1 || !split2) {
-      throw new Error(`Module ${m} lacks sufficient valid questions to form exactly 20-mark splits.`);
+      throw new Error(`Module ${m} lacks sufficient valid questions to form exactly ${targetMarks}-mark splits.`);
     }
 
     paper.modules.push({

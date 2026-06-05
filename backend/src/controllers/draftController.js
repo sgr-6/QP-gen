@@ -6,12 +6,12 @@ const path = require('path');
 
 const generateDraft = async (req, res) => {
   try {
-    const { courseTitle } = req.body;
+    const { courseTitle, examType, examConfig } = req.body;
     if (!courseTitle) {
       return res.status(400).json({ error: 'Course Title is required' });
     }
 
-    const paper = await generatePaper(courseTitle);
+    const paper = await generatePaper(courseTitle, examType, examConfig);
     
     // Save draft to DB for HOD approval (Implementation omitted for brevity)
     
