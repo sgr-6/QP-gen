@@ -367,7 +367,7 @@ export default function ExamDashboard() {
                         <React.Fragment key={mIdx}>
                           <tr>
                             <td colSpan={6} className="text-center" style={{ fontWeight: 700, backgroundColor: '#F8F9FA' }}>
-                              Module {mod.moduleNumber}
+                              {selectedExamType === 'internal' ? `Part ${mIdx + 1}` : `Module ${mod.moduleNumber}`}
                             </td>
                           </tr>
                           
