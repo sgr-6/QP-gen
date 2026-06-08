@@ -238,8 +238,13 @@ const splitTextIntoObjects = (text) => {
     // Clean markdown characters at the start of the line for regex check
     const cleanedLine = trimmed.replace(/^[\*\#\_\>\[\]\-\s\|]+/, '');
 
-    // Match "1.", "2)", "1a)", "a)", "Q1", etc.
-    const isQuestionStart = cleanedLine.match(/^(?:Q\s*)?\d+\s*[\.\)]|^\d*\s*[a-z]\s*[\.\)]/i);
+    // Ignore table headers like "Q. No."
+    if (cleanedLine.match(/^Q\.?\s*No\.?/i) || cleanedLine.match(/^Sl\.?\s*No\.?/i)) {
+      continue;
+    }
+
+    // Match "1.", "1 ", "2)", "1a)", "a)", "Q1", etc.
+    const isQuestionStart = cleanedLine.match(/^(?:Q\s*\.?)?\s*\d+\s*[\.\)\s]+|^[a-z]\s*[\.\)]/i);
     
     // DEBUG LOG
     console.log("Line:", trimmed);
