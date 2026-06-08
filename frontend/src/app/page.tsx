@@ -13,12 +13,33 @@ export default function ExamDashboard() {
   const [activeTab, setActiveTab] = useState('upload');
   const [file, setFile] = useState<File | null>(null);
   const [courseTitle, setCourseTitle] = useState('');
+  const [department, setDepartment] = useState('');
+  const [semester, setSemester] = useState('');
+  const [subjectCode, setSubjectCode] = useState('');
   const [generateTitle, setGenerateTitle] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterSemester, setFilterSemester] = useState('');
+  const [banks, setBanks] = useState<any[]>([]);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [generateStatus, setGenerateStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
   const [draftPaper, setDraftPaper] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedExamType, setSelectedExamType] = useState<ExamType | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'generate') {
+      const fetchBanks = async () => {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+          const res = await axios.get(`${baseUrl}/api/question-banks`);
+          setBanks(res.data || []);
+        } catch (err) {
+          console.error('Failed to fetch question banks', err);
+        }
+      };
+      fetchBanks();
+    }
+  }, [activeTab]);
 
   const { currentUser, loading, logout } = useAuth();
   const router = useRouter();
@@ -43,12 +64,15 @@ export default function ExamDashboard() {
   
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !courseTitle) return;
+    if (!file || !courseTitle || !department || !semester || !subjectCode) return;
     
     setUploadStatus('uploading');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('courseTitle', courseTitle);
+    formData.append('department', department);
+    formData.append('semester', semester);
+    formData.append('subjectCode', subjectCode);
 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -61,6 +85,9 @@ export default function ExamDashboard() {
         setUploadStatus('idle');
         setFile(null);
         setCourseTitle('');
+        setDepartment('');
+        setSemester('');
+        setSubjectCode('');
       }, 3000);
     } catch (error) {
       console.error('Upload error:', error);
@@ -217,13 +244,49 @@ export default function ExamDashboard() {
               <div className="card">
                 <form onSubmit={handleUpload}>
                   <div className="input-group">
-                    <label className="input-label">Course Code</label>
+                    <label className="input-label">Department</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      placeholder="e.g. Computer Science"
+                      className="pill-input"
+                    />
+                  </div>
+
+                  <div className="input-group">
+                    <label className="input-label">Semester</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={semester}
+                      onChange={(e) => setSemester(e.target.value)}
+                      placeholder="e.g. 5"
+                      className="pill-input"
+                    />
+                  </div>
+
+                  <div className="input-group">
+                    <label className="input-label">Subject Code</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={subjectCode}
+                      onChange={(e) => setSubjectCode(e.target.value)}
+                      placeholder="e.g. CS101"
+                      className="pill-input"
+                    />
+                  </div>
+
+                  <div className="input-group">
+                    <label className="input-label">Subject Name (Course Title)</label>
                     <input 
                       type="text" 
                       required
                       value={courseTitle}
                       onChange={(e) => setCourseTitle(e.target.value)}
-                      placeholder="e.g. CS101"
+                      placeholder="e.g. Introduction to Programming"
                       className="pill-input"
                     />
                   </div>
@@ -256,7 +319,7 @@ export default function ExamDashboard() {
                   <div style={{ marginTop: '32px' }}>
                     <button 
                       type="submit" 
-                      disabled={uploadStatus === 'uploading' || !file || !courseTitle}
+                      disabled={uploadStatus === 'uploading' || !file || !courseTitle || !department || !semester || !subjectCode}
                       className="btn-primary"
                     >
                       {uploadStatus === 'uploading' ? (
@@ -302,15 +365,64 @@ export default function ExamDashboard() {
                   <h4 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>Ready to Draft</h4>
                   <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Enter the EXACT Course Code you uploaded to generate your paper.</p>
                 
-                <div style={{ display: 'flex', gap: '16px', maxWidth: '500px', margin: '0 auto' }}>
-                  <input 
-                    type="text" 
-                    value={generateTitle}
-                    onChange={(e) => setGenerateTitle(e.target.value)}
-                    placeholder="Course Code (e.g. CS101)"
-                    className="pill-input"
-                    style={{ flex: 1 }}
-                  />
+                <div style={{ display: 'flex', gap: '16px', maxWidth: '800px', margin: '0 auto', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 200px' }}>
+                    <label className="input-label text-left">Department</label>
+                    <select 
+                      value={filterDepartment} 
+                      onChange={(e) => {
+                        setFilterDepartment(e.target.value);
+                        setFilterSemester('');
+                        setGenerateTitle('');
+                      }}
+                      className="pill-input"
+                      style={{ padding: '12px 16px', width: '100%', appearance: 'auto' }}
+                    >
+                      <option value="">Select Department</option>
+                      {Array.from(new Set(banks.map(b => b.department).filter(Boolean))).map(d => (
+                        <option key={d as string} value={d as string}>{d as string}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ flex: '1 1 150px' }}>
+                    <label className="input-label text-left">Semester</label>
+                    <select 
+                      value={filterSemester} 
+                      onChange={(e) => {
+                        setFilterSemester(e.target.value);
+                        setGenerateTitle('');
+                      }}
+                      disabled={!filterDepartment}
+                      className="pill-input"
+                      style={{ padding: '12px 16px', width: '100%', appearance: 'auto' }}
+                    >
+                      <option value="">Select Semester</option>
+                      {Array.from(new Set(banks.filter(b => b.department === filterDepartment).map(b => b.semester).filter(Boolean))).map(s => (
+                        <option key={s as string} value={s as string}>{s as string}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ flex: '2 1 300px' }}>
+                    <label className="input-label text-left">Subject Code & Name</label>
+                    <select 
+                      value={generateTitle} 
+                      onChange={(e) => setGenerateTitle(e.target.value)}
+                      disabled={!filterSemester}
+                      className="pill-input"
+                      style={{ padding: '12px 16px', width: '100%', appearance: 'auto' }}
+                    >
+                      <option value="">Select Subject</option>
+                      {banks
+                        .filter(b => b.department === filterDepartment && b.semester === filterSemester)
+                        .map(b => (
+                        <option key={b.courseTitle} value={b.courseTitle}>
+                          {b.subjectCode ? `${b.subjectCode} - ` : ''}{b.courseTitle}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginTop: '24px' }}>
                   <button 
                     onClick={handleGenerate}
                     disabled={generateStatus === 'generating' || !generateTitle}

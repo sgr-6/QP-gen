@@ -16,6 +16,9 @@ const uploadFile = async (req, res) => {
 
     const file = req.file;
     const courseTitle = req.body.courseTitle || 'Unknown Course';
+    const department = req.body.department || 'Unknown Dept';
+    const semester = req.body.semester || 'Unknown Sem';
+    const subjectCode = req.body.subjectCode || 'Unknown Code';
     const filePath = path.resolve(file.path);
 
     // 1. Upload to Supabase 'question-banks' bucket
@@ -57,6 +60,9 @@ const uploadFile = async (req, res) => {
       const bankRef = db.collection('question_banks').doc(courseTitle.replace(/\s+/g, '_').toLowerCase());
       batch.set(bankRef, {
         courseTitle,
+        department,
+        semester,
+        subjectCode,
         sourceFileUrl: publicUrl,
         uploadedAt: admin.firestore.FieldValue.serverTimestamp(),
         totalQuestions: normalizedQuestions.length
@@ -72,8 +78,17 @@ const uploadFile = async (req, res) => {
       console.log(`Saved ${normalizedQuestions.length} questions to Firestore under ${courseTitle}`);
     } else {
       // In-memory fallback
-      global.inMemoryDB = global.inMemoryDB || { banks: {} };
+      global.inMemoryDB = global.inMemoryDB || { banks: {}, metadata: {} };
       global.inMemoryDB.banks[courseTitle.replace(/\s+/g, '_').toLowerCase()] = normalizedQuestions;
+      global.inMemoryDB.metadata = global.inMemoryDB.metadata || {};
+      global.inMemoryDB.metadata[courseTitle.replace(/\s+/g, '_').toLowerCase()] = {
+        courseTitle,
+        department,
+        semester,
+        subjectCode,
+        totalQuestions: normalizedQuestions.length,
+        sourceFileUrl: publicUrl
+      };
       console.log(`Saved ${normalizedQuestions.length} questions to In-Memory DB under ${courseTitle}`);
     }
 
@@ -96,7 +111,31 @@ const uploadFile = async (req, res) => {
   }
 };
 
+const getQuestionBanks = async (req, res) => {
+  try {
+    const banks = [];
+    if (admin.apps.length > 0) {
+      const db = admin.firestore();
+      const snapshot = await db.collection('question_banks').get();
+      snapshot.forEach(doc => {
+        banks.push({ id: doc.id, ...doc.data() });
+      });
+    } else {
+      if (global.inMemoryDB && global.inMemoryDB.metadata) {
+        for (const [key, value] of Object.entries(global.inMemoryDB.metadata)) {
+          banks.push({ id: key, ...value });
+        }
+      }
+    }
+    res.json(banks);
+  } catch (error) {
+    console.error("Error fetching question banks:", error);
+    res.status(500).json({ error: 'Failed to fetch question banks' });
+  }
+};
+
 module.exports = {
   upload,
-  uploadFile
+  uploadFile,
+  getQuestionBanks
 };
