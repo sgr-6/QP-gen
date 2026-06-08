@@ -133,7 +133,7 @@ DOCUMENT TEXT:
 ${markdown}`;
 
     const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: prompt
     });
 
@@ -175,7 +175,7 @@ CRITICAL: If a question contains a table followed by sub-questions (e.g., "1) Wh
 Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.`;
 
     const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: [
         { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
         prompt
@@ -229,7 +229,7 @@ const splitTextIntoObjects = (text) => {
     }
 
     // Clean markdown characters at the start of the line for regex check
-    const cleanedLine = trimmed.replace(/^[\*\#\_\>\[\]\-\s]+/, '');
+    const cleanedLine = trimmed.replace(/^[\*\#\_\>\[\]\-\s\|]+/, '');
 
     // Match "1.", "2)", "1a)", "a)", "Q1", etc.
     const isQuestionStart = cleanedLine.match(/^(?:Q\s*)?\d+\s*[\.\)]|^\d*\s*[a-z]\s*[\.\)]/i);
