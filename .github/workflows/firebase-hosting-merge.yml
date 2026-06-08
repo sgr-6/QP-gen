@@ -9,6 +9,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cd frontend && npm ci && npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://sjb-qpgen-backend.onrender.com
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
