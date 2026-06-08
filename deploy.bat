@@ -24,4 +24,3 @@ echo ===================================================
 echo   DEPLOYMENT COMPLETE! 
 echo   Your Backend and Frontend are now updating.
 echo ===================================================
-pause
