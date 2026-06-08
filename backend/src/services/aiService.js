@@ -46,8 +46,12 @@ const inferTags = async (questionText) => {
       co: parsed.co || 'CO1'
     };
   } catch (error) {
-    console.error("Error calling Gemini API:", error);
-    return { btl: 'L2', co: 'CO1' }; // Fallback on error
+    console.error("Error inferring tags for:", questionText.substring(0, 50), "...", error.message);
+    // Return safe default tags if AI inference fails due to 503 or Rate Limits
+    return {
+      btl: "L2",
+      co: "CO1"
+    };
   }
 };
 
