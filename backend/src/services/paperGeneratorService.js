@@ -14,15 +14,23 @@ const md = new MarkdownIt({ html: true, breaks: true });
  */
 const generatePaper = async (courseTitle, examType = 'semester', examConfig = null) => {
   let allQuestions = [];
+  let bankRef;
+  let questionsSnapshot;
 
   if (admin.apps.length > 0) {
     const db = admin.firestore();
-    // 1. Fetch available questions for the course
-    const bankRef = db.collection('question_banks').doc(courseTitle.replace(/\s+/g, '_').toLowerCase());
-    const questionsSnapshot = await bankRef.collection('questions').get();
+    // 1. Fetch available questions for the course by querying courseTitle
+    const banksQuery = await db.collection('question_banks').where('courseTitle', '==', courseTitle).get();
+    
+    if (banksQuery.empty) {
+      throw new Error(`No question bank found for course: ${courseTitle}`);
+    }
+    
+    const bankDoc = banksQuery.docs[0];
+    questionsSnapshot = await bankDoc.ref.collection('questions').get();
     
     if (questionsSnapshot.empty) {
-      throw new Error(`No question bank found for course: ${courseTitle}`);
+      throw new Error(`Question bank is empty for course: ${courseTitle}`);
     }
 
     questionsSnapshot.forEach(doc => allQuestions.push(doc.data()));
