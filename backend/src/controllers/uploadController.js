@@ -33,11 +33,24 @@ const uploadFile = async (req, res) => {
     
     const fileBuffer = fs.readFileSync(filePath);
     
-    const bucket = admin.storage().bucket(process.env.FIREBASE_STORAGE_BUCKET);
-    const fileRef = bucket.file(`${tenantId}/source_files/${fileName}`);
-    await fileRef.save(fileBuffer, { contentType: file.mimetype });
-    await fileRef.makePublic();
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileRef.name}`;
+    // Upload to Supabase Storage
+    const { data: bData, error: bError } = await supabase.storage.getBucket('source_files');
+    if (bError && (bError.message.includes('not found') || bError.message.includes('Bucket not found'))) {
+      await supabase.storage.createBucket('source_files', { public: true });
+    }
+    
+    const { error: uploadError } = await supabase.storage.from('source_files').upload(`${tenantId}/${fileName}`, fileBuffer, {
+      contentType: file.mimetype,
+      upsert: true
+    });
+    
+    if (uploadError) {
+      console.error("Supabase storage upload error:", uploadError);
+      throw new Error("Failed to upload source file to storage");
+    }
+
+    const { data: publicUrlData } = supabase.storage.from('source_files').getPublicUrl(`${tenantId}/${fileName}`);
+    const publicUrl = publicUrlData.publicUrl;
 
     console.log(`Uploaded to Supabase: ${publicUrl}`);
 

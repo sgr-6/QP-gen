@@ -17,13 +17,19 @@ const extractTemplate = async (req, res) => {
     const originalname = req.file.originalname;
     const ext = path.extname(originalname).toLowerCase();
     
-    // Upload to Firebase Storage
-    const bucket = admin.storage().bucket(process.env.FIREBASE_STORAGE_BUCKET);
+    // Upload to Supabase Storage
+    const supabase = require('../config/supabaseClient');
     const destPath = `${tenantId}/template_samples/${Date.now()}_${originalname}`;
-    const fileRef = bucket.file(destPath);
-    await fileRef.save(fileBuffer, { contentType: req.file.mimetype });
-    await fileRef.makePublic();
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileRef.name}`;
+    const { data: bData, error: bError } = await supabase.storage.getBucket('templates');
+    if (bError && (bError.message.includes('not found') || bError.message.includes('Bucket not found'))) {
+      await supabase.storage.createBucket('templates', { public: true });
+    }
+    await supabase.storage.from('templates').upload(destPath, fileBuffer, {
+      contentType: req.file.mimetype,
+      upsert: true
+    });
+    const { data: publicUrlData } = supabase.storage.from('templates').getPublicUrl(destPath);
+    const publicUrl = publicUrlData.publicUrl;
 
     let extractedData = {};
     const tempPath = path.join(os.tmpdir(), `temp_template_${Date.now()}${ext}`);

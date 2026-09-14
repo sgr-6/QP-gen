@@ -26,11 +26,16 @@ const uploadSyllabus = async (req, res) => {
 
     const fileBuffer = fs.readFileSync(filePath);
 
-    // Upload to Firebase Storage
-    const bucket = admin.storage().bucket(process.env.FIREBASE_STORAGE_BUCKET);
-    const fileRef = bucket.file(`${tenantId}/syllabi/${fileName}`);
-    await fileRef.save(fileBuffer, { contentType: file.mimetype });
-    await fileRef.makePublic();
+    // Upload to Supabase Storage
+    const supabase = require('../config/supabaseClient');
+    const { data: bData, error: bError } = await supabase.storage.getBucket('syllabi');
+    if (bError && (bError.message.includes('not found') || bError.message.includes('Bucket not found'))) {
+      await supabase.storage.createBucket('syllabi', { public: true });
+    }
+    await supabase.storage.from('syllabi').upload(`${tenantId}/${fileName}`, fileBuffer, {
+      contentType: file.mimetype,
+      upsert: true
+    });
 
     // Use Gemini to parse syllabus using File API
     const uploadedFile = await ai.files.upload({

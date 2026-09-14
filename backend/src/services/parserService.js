@@ -106,12 +106,15 @@ const parseDOCX = async (url, tenantId) => {
           return { src: "" };
         }
         
-        // Upload to Firebase Storage
-        const bucket = admin.storage().bucket(process.env.FIREBASE_STORAGE_BUCKET);
-        const file = bucket.file(`${tenantId}/images/${hash}.${ext}`);
-        await file.save(binaryBuffer, { contentType: image.contentType });
-        await file.makePublic();
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
+        // Upload to Supabase Storage
+        await ensureBucket('images');
+        await supabase.storage.from('images').upload(`${tenantId}/${hash}.${ext}`, binaryBuffer, {
+          contentType: image.contentType,
+          upsert: true
+        });
+        
+        const { data: publicUrlData } = supabase.storage.from('images').getPublicUrl(`${tenantId}/${hash}.${ext}`);
+        const publicUrl = publicUrlData.publicUrl;
         
         return { src: publicUrl };
       });
