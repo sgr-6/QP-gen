@@ -50,10 +50,9 @@ const inferTags = async (questionText) => {
     // Return safe default tags if AI inference fails due to 503 or Rate Limits
     return {
       btl: "L2",
-};
-
-module.exports = {
-  inferTags
+      co: "CO1"
+    };
+  }
 };
 
 /**
