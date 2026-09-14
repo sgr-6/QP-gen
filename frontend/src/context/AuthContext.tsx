@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: 'professor' | 'hod' | 'controller_of_exams' | 'print_admin' | 'tenant_admin' | 'super_admin';
   tenantId?: string;
+  token?: string;
 }
 
 interface AuthContextType {

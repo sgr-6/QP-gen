@@ -8,6 +8,22 @@ const api = axios.create({
   },
 });
 
+// Request interceptor for Bearer token
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('qpgen_user');
+    if (stored) {
+      try {
+        const user = JSON.parse(stored);
+        if (user.token) {
+          config.headers.Authorization = `Bearer ${user.token}`;
+        }
+      } catch (e) {}
+    }
+  }
+  return config;
+});
+
 // Response interceptor for auth errors
 api.interceptors.response.use(
   (response) => response,

@@ -156,7 +156,7 @@ app.post(['/auth/otp/verify', '/api/auth/otp/verify'], async (req, res) => {
       maxAge: 12 * 60 * 60 * 1000 // 12 hours
     });
     
-    res.json({ message: 'Login successful', user: { email, role: userData.role } });
+    res.json({ message: 'Login successful', token, user: { email, role: userData.role } });
   } catch (error) {
     console.error('Error verifying OTP:', error);
     res.status(500).json({ error: 'Failed to verify OTP' });

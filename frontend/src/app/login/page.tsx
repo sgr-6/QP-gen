@@ -61,6 +61,7 @@ export default function LoginPage() {
         email: response.data.user.email,
         role: response.data.user.role,
         tenantId: response.data.user.tenantId,
+        token: response.data.token,
       };
       
       login(user);
