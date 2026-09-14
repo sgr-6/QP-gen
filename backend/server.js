@@ -21,7 +21,10 @@ const { authenticate, JWT_SECRET } = require('./src/middleware/auth');
 
 const app = express();
 
-app.use(cors({ origin: ['http://localhost:3000', process.env.FRONTEND_URL], credentials: true }));
+app.use(cors({ 
+  origin: true, // Allow any origin for now to prevent CORS issues
+  credentials: true 
+}));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -43,7 +46,7 @@ app.use('/api/print-admin', require('./src/routes/printAdmin'));
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 // Route: Generate OTP
-app.post('/auth/otp/generate', async (req, res) => {
+app.post(['/auth/otp/generate', '/api/auth/otp/generate'], async (req, res) => {
   try {
     const { email, orgCode } = req.body;
     if (!email || !orgCode) return res.status(400).json({ error: 'Email and orgCode are required' });
@@ -96,7 +99,7 @@ app.post('/auth/otp/generate', async (req, res) => {
 });
 
 // Route: Verify OTP
-app.post('/auth/otp/verify', async (req, res) => {
+app.post(['/auth/otp/verify', '/api/auth/otp/verify'], async (req, res) => {
   try {
     const { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required' });
@@ -161,7 +164,7 @@ app.post('/auth/otp/verify', async (req, res) => {
 });
 
 // Route: Logout (clear JWT cookie)
-app.post('/auth/logout', (req, res) => {
+app.post(['/auth/logout', '/api/auth/logout'], (req, res) => {
   res.clearCookie('jwt', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -171,7 +174,7 @@ app.post('/auth/logout', (req, res) => {
 });
 
 // Route: Session check (returns current user from JWT)
-app.get('/auth/me', authenticate, (req, res) => {
+app.get(['/auth/me', '/api/auth/me'], authenticate, (req, res) => {
   res.json({ user: req.user });
 });
 
