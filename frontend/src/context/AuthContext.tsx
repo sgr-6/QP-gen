@@ -6,7 +6,7 @@ import api from "@/lib/api";
 
 export interface User {
   email: string;
-  role: 'professor' | 'hod' | 'controller_of_exams' | 'print_admin' | 'tenant_admin' | 'super_admin';
+  role: 'professor' | 'hod' | 'controller_of_exams' | 'print_admin' | 'tenant_admin' | 'super_admin' | 'early_access';
   tenantId?: string;
   token?: string;
 }

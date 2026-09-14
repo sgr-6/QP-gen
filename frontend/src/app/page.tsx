@@ -16,7 +16,7 @@ export default function ExamDashboard() {
   // Set default tab based on role
   useEffect(() => {
     if (currentUser) {
-      if (hasRole('early_access', 'early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin')) {
+      if (hasRole('early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin')) {
         setActiveTab('upload');
       } else if (hasRole('super_admin')) {
         setActiveTab('admin');
@@ -351,7 +351,7 @@ export default function ExamDashboard() {
           QP Gen
         </div>
         <nav className="nav-menu">
-          {hasRole('early_access', 'early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
+          {hasRole('early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
             <button 
               onClick={() => setActiveTab('upload')}
               className={`nav-item ${activeTab === 'upload' ? 'active' : ''}`}
@@ -433,7 +433,7 @@ export default function ExamDashboard() {
         <div className="content-area">
           
           {/* UPLOAD TAB */}
-          {activeTab === 'upload' && hasRole('early_access', 'early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
+          {activeTab === 'upload' && hasRole('early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
             <div className="animate-in">
               <div style={{ marginBottom: '32px' }}>
                 <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>Data Ingestion</h3>
@@ -708,6 +708,7 @@ export default function ExamDashboard() {
                     </h2>
                   </div>
 
+                  <div className="table-wrapper">
                   <table>
                     <thead>
                       <tr>
@@ -759,19 +760,8 @@ export default function ExamDashboard() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                   <div className="text-center" style={{ fontWeight: 700, fontSize: '20px', marginTop: '32px' }}>*********</div>
-                  
-                  <style dangerouslySetInnerHTML={{__html: `
-                    @media print {
-                      body * { visibility: hidden; }
-                      .printable-paper, .printable-paper * { visibility: visible; }
-                      .printable-paper {
-                        position: absolute; left: 0; top: 0; width: 100%;
-                        padding: 0; box-shadow: none; margin: 0;
-                      }
-                      .print-hidden { display: none !important; }
-                    }
-                  `}} />
                 </div>
               )}
             </div>
@@ -828,6 +818,7 @@ export default function ExamDashboard() {
                     </h2>
                   </div>
 
+                  <div className="table-wrapper">
                   <table>
                     <thead>
                       <tr>
@@ -878,6 +869,7 @@ export default function ExamDashboard() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -1036,12 +1028,12 @@ export default function ExamDashboard() {
 
       {/* Mobile Navigation Bar */}
       <div className="mobile-nav">
-        {hasRole('early_access', 'early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
+        {hasRole('early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
           <button 
             onClick={() => setActiveTab('upload')}
             className={`mobile-nav-btn ${activeTab === 'upload' ? 'active' : ''}`}
           >
-            <UploadCloud size={20} />
+            <UploadCloud size={18} />
             <span>Ingest</span>
           </button>
         )}
@@ -1050,17 +1042,35 @@ export default function ExamDashboard() {
             onClick={() => setActiveTab('generate')}
             className={`mobile-nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
           >
-            <FileText size={20} />
+            <FileText size={18} />
             <span>Draft</span>
+          </button>
+        )}
+        {hasRole('hod', 'controller_of_exams') && (
+          <button 
+            onClick={() => setActiveTab('review')}
+            className={`mobile-nav-btn ${activeTab === 'review' ? 'active' : ''}`}
+          >
+            <ClipboardCheck size={18} />
+            <span>Review</span>
           </button>
         )}
         <button 
           onClick={() => setActiveTab('analytics')}
           className={`mobile-nav-btn ${activeTab === 'analytics' ? 'active' : ''}`}
         >
-          <BarChart3 size={20} />
+          <BarChart3 size={18} />
           <span>Analytics</span>
         </button>
+        {hasRole('tenant_admin', 'super_admin') && (
+          <button 
+            onClick={() => setActiveTab('admin')}
+            className={`mobile-nav-btn ${activeTab === 'admin' ? 'active' : ''}`}
+          >
+            <Settings size={18} />
+            <span>Admin</span>
+          </button>
+        )}
       </div>
     </div>
   );
