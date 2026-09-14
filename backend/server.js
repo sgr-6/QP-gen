@@ -151,8 +151,8 @@ app.post(['/auth/otp/verify', '/api/auth/otp/verify'], async (req, res) => {
     // Set HttpOnly Cookie
     res.cookie('jwt', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: true, // MUST be true for sameSite: 'none'
+      sameSite: 'none', // MUST be 'none' for cross-domain requests
       maxAge: 12 * 60 * 60 * 1000 // 12 hours
     });
     
@@ -167,8 +167,8 @@ app.post(['/auth/otp/verify', '/api/auth/otp/verify'], async (req, res) => {
 app.post(['/auth/logout', '/api/auth/logout'], (req, res) => {
   res.clearCookie('jwt', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: true,
+    sameSite: 'none',
   });
   res.json({ message: 'Logged out successfully' });
 });
