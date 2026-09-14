@@ -1,13 +1,21 @@
 const puppeteer = require('puppeteer');
+const { db } = require('../config/firebaseAdmin');
 
-const generatePaperHTML = (paper) => {
+const generatePaperHTML = (paper, template, downloaderIdentity = '') => {
+  const fontFamily = template?.fontFamily || '"Times New Roman", Times, serif';
+  const watermarkText = template?.watermarkText || 'SJBIT CONFIDENTIAL';
+  const institutionName = template?.institutionName || 'Unknown Institution';
+  const identityTimestamp = new Date().toISOString();
+  
   let html = `
   <!DOCTYPE html>
   <html>
   <head>
+    <meta name="downloader" content="${downloaderIdentity}" />
+    <meta name="download-time" content="${identityTimestamp}" />
     <style>
       body {
-        font-family: "Times New Roman", Times, serif;
+        font-family: ${fontFamily};
         font-size: 12pt;
         margin: 20px;
         position: relative;
@@ -19,9 +27,21 @@ const generatePaperHTML = (paper) => {
         transform: translate(-50%, -50%) rotate(-45deg);
         font-size: 80px;
         color: rgba(200, 200, 200, 0.3);
+        z-index: -2;
+        white-space: nowrap;
+        user-select: none;
+      }
+      .identity-watermark {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(45deg);
+        font-size: 30px;
+        color: rgba(150, 150, 150, 0.2);
         z-index: -1;
         white-space: nowrap;
         user-select: none;
+        pointer-events: none;
       }
       table {
         width: 100%;
@@ -52,8 +72,13 @@ const generatePaperHTML = (paper) => {
         word-break: break-word;
         overflow-wrap: break-word;
       }
+      tr {
+        page-break-inside: avoid;
+      }
       .q-text img {
         max-width: 100%;
+        max-height: 400px;
+        object-fit: contain;
       }
       .module-header {
         font-weight: bold;
@@ -67,8 +92,10 @@ const generatePaperHTML = (paper) => {
     </style>
   </head>
   <body>
-    <div class="watermark">SJBIT CONFIDENTIAL</div>
-    <h2 style="text-align:center; text-transform:uppercase;">${paper.courseTitle}</h2>
+    <div class="watermark">${watermarkText}</div>
+    ${downloaderIdentity ? `<div class="identity-watermark">${downloaderIdentity}<br>${identityTimestamp}</div>` : ''}
+    <h2 style="text-align:center; text-transform:uppercase;">${institutionName}</h2>
+    <h3 style="text-align:center; text-transform:uppercase;">${paper.courseTitle}</h3>
     
     <table>
       <thead>
@@ -150,8 +177,20 @@ const generatePaperHTML = (paper) => {
   return html;
 };
 
-const generatePDFBuffer = async (paper) => {
-  const html = generatePaperHTML(paper);
+const generatePDFBuffer = async (paper, tenantId, downloaderIdentity = '') => {
+  let template = null;
+  if (tenantId) {
+    try {
+      const templateDoc = await db.collection('templates').doc(tenantId).get();
+      if (templateDoc.exists) {
+        template = templateDoc.data();
+      }
+    } catch (error) {
+      console.error("Error fetching template:", error.message);
+    }
+  }
+
+  const html = generatePaperHTML(paper, template, downloaderIdentity);
   
   const browser = await puppeteer.launch({
     headless: "new",

@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@emailjs/browser": "^4.4.1",
     "axios": "^1.16.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",

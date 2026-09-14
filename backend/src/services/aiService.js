@@ -50,11 +50,69 @@ const inferTags = async (questionText) => {
     // Return safe default tags if AI inference fails due to 503 or Rate Limits
     return {
       btl: "L2",
-      co: "CO1"
-    };
-  }
 };
 
 module.exports = {
   inferTags
+};
+
+/**
+ * Generates embeddings for a given text.
+ * @param {string} text 
+ * @returns {Promise<number[]>}
+ */
+const generateEmbedding = async (text) => {
+  if (!ai) {
+    console.warn("Gemini API not configured. Returning default embedding.");
+    return Array(768).fill(0.0);
+  }
+  try {
+    const response = await ai.models.embedContent({ model: 'text-embedding-004', contents: text });
+    return response.embedding.values;
+  } catch (error) {
+    console.error("Error generating embedding:", error.message);
+    return Array(768).fill(0.0);
+  }
+};
+
+/**
+ * Checks if an image is a meaningful diagram/equation vs decorative artifact.
+ * @param {string} base64Image 
+ * @param {string} mimeType 
+ * @returns {Promise<boolean>}
+ */
+const checkImageSanity = async (base64Image, mimeType) => {
+  if (!ai) {
+    console.warn("Gemini API not configured. Defaulting to true.");
+    return true;
+  }
+  
+  const prompt = "Is this image a meaningful diagram, chart, or equation that should be included in an exam question? Answer only YES or NO.";
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: [
+        {
+          inlineData: {
+            data: base64Image,
+            mimeType: mimeType
+          }
+        },
+        prompt
+      ]
+    });
+    
+    const text = response.text.trim().toUpperCase();
+    return text.includes("YES");
+  } catch (error) {
+    console.error("Error checking image sanity:", error.message);
+    return true; // Fallback to including it
+  }
+};
+
+module.exports = {
+  inferTags,
+  generateEmbedding,
+  checkImageSanity
 };

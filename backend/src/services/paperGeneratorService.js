@@ -1,49 +1,45 @@
-const admin = require('firebase-admin');
+const { db, admin } = require('../config/firebaseAdmin');
 const MarkdownIt = require('markdown-it');
 const md = new MarkdownIt({ html: true, breaks: true });
 
 /**
  * Core Algorithm for Paper Generation:
- * 1. Fetch questions matching the course title.
+ * 1. Fetch questions matching the course title and tenantId.
  * 2. Group them by Module (1-5).
  * 3. Inside each Module, try to form 2 sets (Split A and Split B) exactly totaling 20 marks each.
  * 4. L1/L2 <= 30% of total marks.
  * 
  * @param {string} courseTitle 
+ * @param {string} examType
+ * @param {Object} examConfig
+ * @param {string} tenantId
  * @returns {Promise<Object>} Generated Paper
  */
-const generatePaper = async (courseTitle, examType = 'semester', examConfig = null) => {
-  let allQuestions = [];
-  let bankRef;
-  let questionsSnapshot;
-
-  if (admin.apps.length > 0) {
-    const db = admin.firestore();
-    // 1. Fetch available questions for the course by querying courseTitle
-    const banksQuery = await db.collection('question_banks').where('courseTitle', '==', courseTitle).get();
-    
-    if (banksQuery.empty) {
-      throw new Error(`No question bank found for course: ${courseTitle}`);
-    }
-    
-    const bankDoc = banksQuery.docs[0];
-    questionsSnapshot = await bankDoc.ref.collection('questions').get();
-    
-    if (questionsSnapshot.empty) {
-      throw new Error(`Question bank is empty for course: ${courseTitle}`);
-    }
-
-    questionsSnapshot.forEach(doc => allQuestions.push(doc.data()));
-  } else {
-    // In-memory fallback
-    global.inMemoryDB = global.inMemoryDB || { banks: {} };
-    const cachedQuestions = global.inMemoryDB.banks[courseTitle.replace(/\s+/g, '_').toLowerCase()];
-    
-    if (!cachedQuestions || cachedQuestions.length === 0) {
-      throw new Error(`No question bank found for course: ${courseTitle}. Note: The database is running in memory-only mode. Did you upload the file recently?`);
-    }
-    allQuestions = cachedQuestions;
+const generatePaper = async (courseTitle, examType = 'semester', examConfig = null, tenantId) => {
+  if (!tenantId) {
+    throw new Error('Tenant ID is required for generation');
   }
+
+  let allQuestions = [];
+
+  // 1. Fetch available questions for the course by querying courseTitle and tenantId
+  const banksQuery = await db.collection('question_banks')
+    .where('courseTitle', '==', courseTitle)
+    .where('tenantId', '==', tenantId)
+    .get();
+  
+  if (banksQuery.empty) {
+    throw new Error(`No question bank found for course: ${courseTitle}`);
+  }
+  
+  const bankDoc = banksQuery.docs[0];
+  const questionsSnapshot = await bankDoc.ref.collection('questions').get();
+  
+  if (questionsSnapshot.empty) {
+    throw new Error(`Question bank is empty for course: ${courseTitle}`);
+  }
+
+  questionsSnapshot.forEach(doc => allQuestions.push(doc.data()));
 
   // 2. We mock "Modules" assuming they exist in the question text or we just split the bank randomly into 5 logical pools.
   // In a real system, the Normalization layer would extract the Module (M1-M5). 
@@ -78,7 +74,8 @@ const generatePaper = async (courseTitle, examType = 'semester', examConfig = nu
     examType,
     generatedAt: new Date().toISOString(),
     totalMarks: isInternal ? 50 : 100,
-    modules: []
+    modules: [],
+    warnings: []
   };
 
   let totalL1L2Marks = 0;
@@ -119,6 +116,13 @@ const generatePaper = async (courseTitle, examType = 'semester', examConfig = nu
       splitB: split2
     });
     
+    // Check for duplicates
+    [...split1, ...split2].forEach(q => {
+      if (q.isDuplicate) {
+        paper.warnings.push(`Warning: Question "${q.questionText.substring(0, 30)}..." was flagged as a duplicate of another question in the database.`);
+      }
+    });
+
     // Track L1/L2 weighting
     totalL1L2Marks += getL1L2Marks(split1) + getL1L2Marks(split2); 
   });
@@ -165,14 +169,14 @@ const shuffleArray = (array) => {
  * Builds a split (e.g. 1a and 1b) that sums exactly to targetMarks (20).
  * It will shuffle the pool for randomness, and allow a 3-mark buffer.
  */
-const buildValidSplit = (pool, targetMarks) => {
+const buildValidSplit = (pool, targetMarks, buffer = 3) => {
   const shuffledPool = shuffleArray([...pool]);
 
   const try2Questions = () => {
     for (let i = 0; i < shuffledPool.length; i++) {
       for (let j = i + 1; j < shuffledPool.length; j++) {
         let sum = shuffledPool[i].marks + shuffledPool[j].marks;
-        if (Math.abs(sum - targetMarks) <= 3) {
+        if (Math.abs(sum - targetMarks) <= buffer) {
           let q1 = { ...shuffledPool[i] };
           let q2 = { ...shuffledPool[j] };
           let diff = targetMarks - sum;
@@ -189,7 +193,7 @@ const buildValidSplit = (pool, targetMarks) => {
       for (let j = i + 1; j < shuffledPool.length; j++) {
         for (let k = j + 1; k < shuffledPool.length; k++) {
           let sum = shuffledPool[i].marks + shuffledPool[j].marks + shuffledPool[k].marks;
-          if (Math.abs(sum - targetMarks) <= 3) {
+          if (Math.abs(sum - targetMarks) <= buffer) {
             let q1 = { ...shuffledPool[i] };
             let q2 = { ...shuffledPool[j] };
             let q3 = { ...shuffledPool[k] };
@@ -212,6 +216,11 @@ const buildValidSplit = (pool, targetMarks) => {
   }
 
   if (result) return result;
+
+  // Recursive relaxation of buffer before falling back
+  if (buffer < 5) {
+    return buildValidSplit(pool, targetMarks, buffer + 1);
+  }
 
   // Fallback
   if (shuffledPool.length >= 2) {
@@ -253,10 +262,16 @@ const validateAcademicRigor = (paper) => {
   });
 
   if (maxL1L2 > 30) {
-    console.warn(`Academic Rigor Warning: Maximum possible L1/L2 marks is ${maxL1L2}, which exceeds the 30% limit. Allowing for demonstration purposes.`);
+    const warning = `Academic Rigor Warning: Maximum possible L1/L2 marks is ${maxL1L2}, which exceeds the 30% limit.`;
+    console.warn(warning);
+    paper.warnings.push(warning);
   }
 };
 
 module.exports = {
-  generatePaper
+  generatePaper,
+  // Exported for testing
+  buildValidSplit,
+  validateAcademicRigor,
+  getL1L2Marks
 };

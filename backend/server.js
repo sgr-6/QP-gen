@@ -1,98 +1,96 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const axios = require('axios');
-const admin = require('firebase-admin');
 
 dotenv.config();
 
+// Initialize Firebase Admin (throws on failure)
+const { db } = require('./src/config/firebaseAdmin');
+
+// Supabase client (throws on failure)
+const supabase = require('./src/config/supabaseClient');
+
+// Services
+const { sendOTPEmail } = require('./src/services/emailService');
+
+// Middleware
+const { authenticate, JWT_SECRET } = require('./src/middleware/auth');
+
 const app = express();
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: ['http://localhost:3000', process.env.FRONTEND_URL], credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Import Routes
 const uploadRoutes = require('./src/routes/upload');
 const draftRoutes = require('./src/routes/draft');
+const superAdminRoutes = require('./src/routes/superAdmin');
+const tenantAdminRoutes = require('./src/routes/tenantAdmin');
 
 app.use('/api', uploadRoutes);
 app.use('/api', draftRoutes);
-
-// Initialize Firebase Admin (Wrapped in try-catch to allow server to start even if missing keys)
-let db;
-try {
-  let serviceAccount;
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  } else {
-    serviceAccount = require('./firebase-service-account.json');
-  }
-  
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
-  db = admin.firestore();
-  console.log("Firebase Admin initialized successfully");
-} catch (error) {
-  console.warn("⚠️ Firebase Admin SDK failed to initialize. Please ensure FIREBASE_SERVICE_ACCOUNT env var is set, or add 'firebase-service-account.json' to the backend folder.");
-}
-
-// Ensure JWT_SECRET is set
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-do-not-use-in-production';
+app.use('/api/syllabus', require('./src/routes/syllabus'));
+app.use('/api/template', require('./src/routes/template'));
+app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/tenant-admin', tenantAdminRoutes);
+app.use('/api/print-admin', require('./src/routes/printAdmin'));
 
 // Generate 6-digit OTP
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-// Route: Generate OTP and send via EmailJS
+// Route: Generate OTP
 app.post('/auth/otp/generate', async (req, res) => {
   try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email is required' });
+    const { email, orgCode } = req.body;
+    if (!email || !orgCode) return res.status(400).json({ error: 'Email and orgCode are required' });
+
+    // Look up user in Supabase
+    const { data: tenantData, error: tenantError } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('org_code', orgCode)
+      .single();
+
+    if (tenantError || !tenantData) {
+      return res.status(403).json({ error: 'Invalid organization code' });
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .eq('tenant_id', tenantData.id)
+      .single();
+
+    if (userError || !userData) {
+      return res.status(403).json({ error: 'User not registered. Contact your institution admin.' });
+    }
 
     const otp = generateOTP();
     const hashedOTP = await bcrypt.hash(otp, 10);
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
-    if (db) {
-      // Store in Firestore
-      await db.collection('otps').doc(email).set({
-        hash: hashedOTP,
-        expiresAt: expiresAt
-      });
-      
-      // Audit log
-      await db.collection('audit_logs').add({
-        action: 'OTP_GENERATED',
+    // Store in Supabase otp_store
+    const { error: otpError } = await supabase
+      .from('otp_store')
+      .insert({
         email: email,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
+        hash: hashedOTP,
+        expires_at: expiresAt
       });
-    } else {
-      console.log(`[MOCK] Storing OTP ${otp} for ${email}`);
-    }
 
-    // Send via EmailJS API
-    const emailJsPayload = {
-      service_id: process.env.EMAILJS_SERVICE_ID,
-      template_id: process.env.EMAILJS_TEMPLATE_ID,
-      user_id: process.env.EMAILJS_PUBLIC_KEY,
-      accessToken: process.env.EMAILJS_PRIVATE_KEY,
-      template_params: {
-        to_email: email,
-        otp: otp
-      }
-    };
+    if (otpError) throw otpError;
 
-    const response = await axios.post('https://api.emailjs.com/api/v1.0/email/send', emailJsPayload, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
-    console.log(`EmailJS response status: ${response.status}`);
+    // Send via Resend
+    await sendOTPEmail(email, otp);
 
     res.json({ message: 'OTP generated and sent successfully' });
   } catch (error) {
-    console.error('Error generating OTP:', error.response?.data || error.message);
+    console.error('Error generating OTP:', error.message);
     res.status(500).json({ error: 'Failed to generate OTP' });
   }
 });
@@ -103,69 +101,78 @@ app.post('/auth/otp/verify', async (req, res) => {
     const { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required' });
 
-    let hashToCompare = '';
-    let expiration = 0;
-    
-    if (db) {
-      const doc = await db.collection('otps').doc(email).get();
-      if (!doc.exists) {
-        return res.status(400).json({ error: 'No OTP found or OTP expired' });
-      }
-      
-      const data = doc.data();
-      hashToCompare = data.hash;
-      expiration = data.expiresAt;
-    } else {
-      // Mock logic if no DB
-      return res.status(400).json({ error: 'Database not configured' });
+    // Fetch latest OTP for email
+    const { data: otpData, error: otpError } = await supabase
+      .from('otp_store')
+      .select('*')
+      .eq('email', email)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (otpError || !otpData) {
+      return res.status(400).json({ error: 'No OTP found or OTP expired' });
     }
 
-    if (Date.now() > expiration) {
-      if (db) await db.collection('otps').doc(email).delete();
+    if (Date.now() > otpData.expires_at) {
+      await supabase.from('otp_store').delete().eq('id', otpData.id);
       return res.status(400).json({ error: 'OTP has expired' });
     }
 
-    const isValid = await bcrypt.compare(otp, hashToCompare);
+    const isValid = await bcrypt.compare(otp, otpData.hash);
     if (!isValid) {
       return res.status(400).json({ error: 'Invalid OTP' });
     }
 
-    // OTP is valid. Delete it.
-    if (db) {
-      await db.collection('otps').doc(email).delete();
-      
-      // Attempt to find user role. Default to Professor if not found
-      let role = 'Professor';
-      const userDoc = await db.collection('users').doc(email).get();
-      if (userDoc.exists) {
-        role = userDoc.data().role || 'Professor';
-      }
-      
-      // Audit log
-      await db.collection('audit_logs').add({
-        action: 'LOGIN_SUCCESS',
-        email: email,
-        role: role,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
-      });
+    // OTP is valid. Delete all OTPs for this email.
+    await supabase.from('otp_store').delete().eq('email', email);
+    
+    // Fetch user's role + tenantId
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, role, tenant_id')
+      .eq('email', email)
+      .single();
 
-      // Generate JWT
-      const token = jwt.sign({ email, role }, JWT_SECRET, { expiresIn: '12h' });
-
-      // Set HttpOnly Cookie
-      res.cookie('jwt', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 12 * 60 * 60 * 1000 // 12 hours
-      });
-      
-      res.json({ message: 'Login successful', user: { email, role } });
+    if (userError || !userData) {
+      return res.status(403).json({ error: 'User not found in system.' });
     }
+
+    // Generate JWT
+    const token = jwt.sign(
+      { email, role: userData.role, tenantId: userData.tenant_id, userId: userData.id },
+      JWT_SECRET,
+      { expiresIn: '12h' }
+    );
+
+    // Set HttpOnly Cookie
+    res.cookie('jwt', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 12 * 60 * 60 * 1000 // 12 hours
+    });
+    
+    res.json({ message: 'Login successful', user: { email, role: userData.role } });
   } catch (error) {
     console.error('Error verifying OTP:', error);
     res.status(500).json({ error: 'Failed to verify OTP' });
   }
+});
+
+// Route: Logout (clear JWT cookie)
+app.post('/auth/logout', (req, res) => {
+  res.clearCookie('jwt', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
+  res.json({ message: 'Logged out successfully' });
+});
+
+// Route: Session check (returns current user from JWT)
+app.get('/auth/me', authenticate, (req, res) => {
+  res.json({ user: req.user });
 });
 
 const PORT = process.env.PORT || 5000;

@@ -6,7 +6,9 @@ const xlsx = require('xlsx');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse'); // Fallback if needed
 const axios = require('axios');
-const { inferTags } = require('./aiService');
+const { inferTags, checkImageSanity } = require('./aiService');
+const crypto = require('crypto');
+const { admin } = require('../config/firebaseAdmin');
 const TurndownService = require('turndown');
 const turndownPluginGfm = require('turndown-plugin-gfm');
 const supabase = require('../config/supabaseClient');
@@ -30,9 +32,10 @@ const ensureBucket = async (bucketName) => {
  * Supported: .csv, .xlsx, .docx, .pdf
  * @param {string} fileUrl The Supabase public URL
  * @param {string} ext The file extension
+ * @param {string} tenantId The tenant ID
  * @returns {Promise<Array>} Array of normalized questions [{questionText, marks, btl, co}]
  */
-const parseFile = async (fileUrl, ext) => {
+const parseFile = async (fileUrl, ext, tenantId) => {
   ext = ext.toLowerCase();
   let rawQuestions = [];
 
@@ -44,7 +47,7 @@ const parseFile = async (fileUrl, ext) => {
       rawQuestions = await parseXLSX(fileUrl);
       break;
     case '.docx':
-      rawQuestions = await parseDOCX(fileUrl);
+      rawQuestions = await parseDOCX(fileUrl, tenantId);
       break;
     case '.pdf':
       rawQuestions = await parsePDF(fileUrl);
@@ -84,8 +87,7 @@ const parseXLSX = async (url) => {
   return xlsx.utils.sheet_to_json(sheet);
 };
 
-const parseDOCX = async (url) => {
-  await ensureBucket('question-images');
+const parseDOCX = async (url, tenantId) => {
   const response = await axios.get(url, { responseType: 'arraybuffer' });
   const buffer = Buffer.from(response.data);
   
@@ -93,24 +95,24 @@ const parseDOCX = async (url) => {
     convertImage: mammoth.images.imgElement(function(image) {
       return image.read("base64").then(async function(imageBase64) {
         const ext = image.contentType.split('/')[1] || 'jpeg';
-        const fileName = `img_${Date.now()}_${Math.floor(Math.random()*1000)}.${ext}`;
         const binaryBuffer = Buffer.from(imageBase64, 'base64');
         
-        const { error: uploadError } = await supabase
-          .storage
-          .from('question-images')
-          .upload(fileName, binaryBuffer, { contentType: image.contentType, upsert: false });
-          
-        if (uploadError) {
-          console.error("Image upload failed:", uploadError);
+        // Hash the buffer
+        const hash = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
+        
+        // Check image sanity
+        const isSane = await checkImageSanity(imageBase64, image.contentType);
+        if (!isSane) {
           return { src: "" };
         }
         
-        const { data: { publicUrl } } = supabase
-          .storage
-          .from('question-images')
-          .getPublicUrl(fileName);
-          
+        // Upload to Firebase Storage
+        const bucket = admin.storage().bucket(process.env.FIREBASE_STORAGE_BUCKET);
+        const file = bucket.file(`${tenantId}/images/${hash}.${ext}`);
+        await file.save(binaryBuffer, { contentType: image.contentType });
+        await file.makePublic();
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
+        
         return { src: publicUrl };
       });
     })

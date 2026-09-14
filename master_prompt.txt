@@ -1,0 +1,339 @@
+<USER_REQUEST>
+MASTER PROMPT — QP Generator:
+Production-Grade Academic
+Question Paper System
+HOW TO USE THIS DOCUMENT (read this
+first, Antigravity)
+You are taking over an existing full-stack codebase (Next.js
+frontend + Node/Express backend + Firebase Firestore +
+Gemini AI). The current state is a working research-lab
+prototype. Your job is to evolve it into a production-grade,
+security-hardened, multi-college-ready system.
+Non-negotiable rules for this entire project:
+1. Do not silently skip any requirement in this document. If
+something is ambiguous, unclear, or you're missing a
+credential/config value, stop and explicitly ask rather than
+guessing, stubbing it out, or quietly dropping it.
+2. Do not say "I forgot X" later. Before starting each phase, reread the full document and confirm to yourself (in your
+working notes) which requirements apply to that phase.
+3. At the end of every phase, produce a checklist confirming
+what was built, what was tested, and what (if anything)
+was deferred and why.
+4. This is an educational integrity system handling
+confidential exam content. Every default must be the
+secure default — fail closed, not open. When in doubt,
+choose the more restrictive behavior.
+5. Credentials (Supabase, Firebase, EmailJS, Render, Gemini
+API keys) will be supplied separately as environment
+variables. Never hardcode secrets. If a credential is
+missing when you need it, pause and ask for it by name
+rather than inventing placeholder values that could get
+committed.
+6. Billing/payments are explicitly OUT of scope for this build.
+Do not implement Stripe/Razorpay or any paywall logic.
+Leave clean extension points (e.g., a tenant.plan field)
+but do not build billing UI or logic.
+1. PROJECT CONTEXT
+What this is: A web app used by a college exam cell to generate
+academic question papers. Professors upload question banks
+or raw notes/syllabus; the system tags questions with Bloom's
+Taxonomy Level (BTL) and Course Outcome (CO); an algorithm
+assembles a balanced paper matching mark distribution and
+academic rigor rules; the paper is rendered into a college's
+exact official template; the final PDF is cryptographically signed,
+watermarked, and access-controlled before release.
+Long-term goal (architect for this now, do not build billing for
+it): After successful use at our own college, this will be sold as
+a paid multi-tenant SaaS product to other colleges. Build with
+multi-tenancy from the start — retrofitting tenant isolation later
+is far more dangerous for a security-sensitive product than
+building it in now.
+Existing stack (confirm against actual repo, do not assume
+unchanged):
+Frontend: Next.js (App Router), TypeScript/TSX, Tailwind,
+Framer Motion, axios, html2pdf.js, recharts
+Backend: Node.js + Express, JWT in HttpOnly cookies,
+EmailJS for OTP, bcrypt
+Database: Firebase Firestore via firebase-admin
+AI: Google Gemini API ( @google/genai )
+Document parsing: mammoth, markdown-it, turndown
+New infra to integrate (credentials to be supplied by the user —
+ask if not found in repo/env):
+Supabase (confirm exact intended use with the user before
+assuming — likely candidate for Postgres-based relational
+data such as tenants, roles, audit logs, and billing-adjacent
+fields, running alongside Firestore for document-style
+question data; do not assume this split, confirm it)
+Firebase (existing — Firestore + add Firebase Storage for
+binary files)
+EmailJS (existing, but flagged for replacement — see
+Phase 1)
+Render (deployment target for backend, and possibly
+frontend — confirm)
+2. FULL REQUIREMENTS CHECKLIST (all
+phases must collectively deliver every item
+below — treat this as your source of truth,
+re-check against it before declaring any
+phase "done")
+A. Core generation features
+[ ] Generate questions directly from uploaded
+notes/syllabus (not just pre-tagged banks)
+[ ] Auto-allot marks, BTL, and CO for AI-generated
+questions
+[ ] Human review/approval gate before AI-generated
+questions enter the live bank
+[ ] Duplicate / near-duplicate question detection within and
+across uploads
+[ ] Template cloning: ingest a sample paper, extract its
+exact visual/structural template, allow re-rendering with
+new data (date, subject, course code, semester, duration,
+max marks, etc.) while keeping layout identical
+[ ] Template versioning and a per-department template
+library
+[ ] Existing paper generation algorithm (module grouping,
+split A/B, rigor validation) preserved and hardened
+B. Image handling (robust, end-to-end)
+[ ] Extract images directly from DOCX zip structure
+( word/media/ ) with relationship-ID mapping to correct
+question/paragraph — not reliant on mammoth alone
+[ ] Preserve multi-image questions, figure order, and
+captions
+[ ] Store images in Firebase Storage (or equivalent), not
+Firestore; store only references + metadata in Firestore
+[ ] Content-hash based deduplication of reused images
+[ ] Image versioning tied to question edits
+[ ] Accurate inline placement of images in generated QP
+output at the correct position relative to question text
+[ ] Aspect ratio preservation, print-resolution (150–300 DPI)
+output, and page-break-safe layout (image + its question
+never split across PDF pages)
+[ ] AI-vision sanity check (Gemini multimodal) verifying
+extracted image matches question context and isn't
+blank/corrupted
+[ ] Watermarking applied to images at export time,
+matching the text watermarking system
+C. Security & authentication
+[ ] Replace default "Professor" role fallback — every user
+must be explicitly assigned a role, no silent defaults
+[ ] SHA-256 integrity hash generated for every finalized
+question paper, stored server-side against the paper record
+[ ] Public/internal verification portal: given a hash or QP ID,
+confirm authenticity, generation timestamp, and generator
+identity — without exposing paper content
+[ ] Distinguish clearly in the build between "integrity
+hashing" (SHA-256) and "authentication/authorization"
+(roles, JWT, sessions) — implement both, do not conflate
+them
+[ ] Per-copy watermarking (visible +
+invisible/steganographic) burned into every exported PDF,
+tied to the downloading user's identity
+[ ] JWT validated via Express middleware on every
+protected route (not just at login) — audit and fix current
+gaps
+[ ] Encryption at rest for question bank content and
+generated papers in the database/storage layer
+[ ] Rate limiting and anomaly detection on download/view
+endpoints (e.g., auto-lock + alert on abnormal download
+bursts)
+[ ] Time-locked release: papers not downloadable/printable
+before a configured embargo timestamp, except explicitly
+flagged early-access roles
+[ ] Remove/replace the in-memory DB fallback —
+production must hard-fail if Firebase/Supabase is not
+properly initialized, never silently degrade
+[ ] Replace EmailJS (client-side) with a server-side
+transactional email or SMS provider for OTP delivery — flag
+exact provider choice to the user before implementing, or
+ask which they prefer
+[ ] Full audit trail: every view, download, print, edit, and
+approval logged with user, timestamp, IP, and action
+D. Access control / roles
+[ ] Role hierarchy: Professor (create/edit own drafts) →
+HOD/Reviewer (approve, inline comment) → Controller of
+Exams (final lock + release) → Print/Admin (view-only,
+download-restricted)
+[ ] Maker-checker (two-person rule) required before a paper
+can be marked final/released
+[ ] Inline commenting on specific questions during HOD
+review (not just whole-paper approve/reject)
+[ ] Tenant-level admin role (college's own admin) separate
+from platform-level super-admin (you/your team)
+E. Multi-tenancy (build now, no billing logic)
+[ ] Full data isolation per college/institution — either
+separate namespaces or strict tenantId scoping
+enforced at the database security-rule level, not just in
+application code
+[ ] Separate storage buckets or storage-path scoping per
+tenant for images/files
+[ ] Per-tenant template/letterhead library
+[ ] Org-code or subdomain-based login so users land in the
+correct tenant
+[ ] Self-serve-style template setup: upload a
+letterhead/sample paper once, auto-detect placeholder
+fields, confirm, done (no manual per-college dev work
+required to onboard)
+[ ] Bulk professor/department import via CSV
+[ ] Data export capability per tenant (question bank +
+papers), and a defined data retention/deletion policy
+[ ] Leave a plan / tier field on the tenant model for future
+billing, but build no billing logic, UI, or enforcement
+F. Differentiating features (build these in, not just "nice
+to have")
+[ ] Repeat/plagiarism check against the college's own
+question history (last N years) for the same course, flagged
+at generation time
+[ ] Post-exam feedback loop: professors mark questions as
+"too easy/too hard/ambiguous," feeding future generation
+bias
+[ ] Admin analytics dashboard: generation trends, module
+usage, BTL distribution over time (recharts already
+available)
+[ ] Multi-language support for regional-language question
+papers
+[ ] Offline-safe final export mode for low-connectivity examcell environments near print time
+[ ] (Stub only, no build) API/webhook access point for
+future ERP/LMS integration — document the extension
+point, do not implement it now
+G. Engineering quality (from original audit — still
+required)
+[ ] Robust error handling and fallback logic in
+paperGeneratorService.js for thin module pools
+[ ] Try/catch + rate-limit handling around all Gemini AI calls
+[ ] Expanded TypeScript coverage frontend-wide; evaluate
+backend TS migration
+[ ] Refactor page.tsx into separate components per tab
+(Upload / Generate / Analytics / Review / Admin)
+[ ] Automated tests for the paper generation algorithm
+(mark-sum correctness, rigor constraint enforcement, split
+A/B validity) — this is the algorithmic core and must not
+regress silently
+3. PHASE-WISE EXECUTION PLAN
+Work through phases in order. Do not start a phase until the
+previous one's checklist is confirmed complete or explicitly
+deferred with a stated reason. At the start of each phase,
+restate which items from Section 2 you are addressing.
+Phase 0 — Audit & Environment Setup
+Clone and run the existing codebase locally; document
+actual current behavior vs. what's described in the project
+context (call out any mismatches you find).
+Request/confirm all missing credentials: Supabase project
+details, Firebase service account, EmailJS→replacement
+provider decision, Render deployment targets, Gemini API
+key.
+Set up environment variable structure ( .env.example files
+for both frontend and backend) — no secrets committed.
+Decide and document the Firestore vs Supabase data split
+(which entities live where) before writing any schema —
+confirm this with the user rather than assuming.
+Set up a staging environment on Render separate from
+production, if not already present.
+Phase 1 — Foundation: Auth, Roles, Multi-Tenancy
+Skeleton
+Design and implement the tenant data model (Section 2E)
+before anything else — every other schema (users,
+question banks, papers, templates) must carry tenantId
+from day one.
+Rebuild authentication: remove default role fallback,
+enforce explicit role assignment, add JWT middleware to
+every protected route, replace EmailJS with the agreed
+server-side OTP delivery method.
+Implement the full role hierarchy and permission checks
+(Section 2D) at the API layer, not just hidden/shown in UI.
+Remove the in-memory DB fallback; hard-fail startup if DB
+isn't reachable in production mode.
+Set up the audit log schema and a logging middleware that
+captures view/download/edit/approve events from this
+point forward, even before all features exist.
+Phase 2 — Data Ingestion: Parsing, Images, SyllabusBased Generation
+Rebuild DOCX parsing to extract images robustly per
+Section 2B (zip-level extraction, relationship-ID mapping,
+captions, multi-image support).
+Set up Firebase Storage integration with tenant-scoped
+paths and content-hash deduplication.
+Build the syllabus/notes ingestion pipeline: chunking →
+topic/outcome extraction → candidate question generation
+→ auto BTL/CO/mark assignment → human review queue
+(do not auto-publish).
+Implement duplicate/near-duplicate detection across the
+question bank.
+Add the AI-vision sanity check for extracted images.
+Phase 3 — Template System
+Build template extraction from an uploaded sample paper:
+detect layout structure, headers, tables, instruction blocks,
+and identify variable fields (date, subject, course code,
+semester, duration, max marks) vs. fixed structure.
+Build the template library with versioning and perdepartment/per-tenant scoping.
+Build the "fill template with new data" rendering path,
+keeping layout pixel-faithful to the original sample.
+Phase 4 — Paper Generation Engine (harden existing +
+integrate new pieces)
+Audit and fix paperGeneratorService.js fallback logic
+for thin module pools.
+Integrate image placement (inline, correct position, pagebreak-safe, print-resolution) into the rendering pipeline.
+Integrate the repeat/plagiarism check into the generation
+flow as a pre-finalization warning.
+Add automated tests validating mark-sum correctness and
+the L1/L2 ≤ 30% rigor constraint across generated splits.
+Phase 5 — Review, Approval, and Release Workflow
+Build the HOD/Reviewer inline-commenting interface on
+individual questions.
+Build the maker-checker two-person release flow.
+Build the time-locked release mechanism (embargo
+timestamp, early-access role override).
+Phase 6 — Security Hardening & Verification
+Implement SHA-256 hashing at paper finalization; store
+hash + metadata.
+Build the verification portal (public-safe: confirms
+authenticity/timestamp/generator without leaking
+content).
+Implement per-copy watermarking (visible + invisible) on
+PDF export, tied to downloader identity.
+Implement encryption at rest for sensitive content.
+Implement rate limiting and anomaly detection on
+view/download endpoints with auto-lock + alerting.
+Phase 7 — Multi-Tenant Onboarding & Admin Tooling
+Build the self-serve template setup wizard.
+Build bulk professor/department CSV import.
+Build tenant-level admin views separate from platform
+super-admin views.
+Build data export and document the retention/deletion
+policy; implement deletion tooling.
+Phase 8 — Differentiating Features
+Feedback loop (post-exam question difficulty tagging) and
+the mechanism by which it biases future generation.
+Analytics dashboard (recharts-based) for admins.
+Multi-language support for question paper generation and
+rendering.
+Offline-safe final export mode.
+Document (but do not build) the API/webhook extension
+point.
+Phase 9 — Code Quality, Testing, Deployment
+Expand TypeScript coverage; decide and execute (or
+explicitly defer with reasoning) backend TS migration.
+Refactor page.tsx into per-tab components, plus new
+Review/Admin components from later phases.
+Full test pass: unit tests on generation algorithm,
+integration tests on auth/role boundaries and tenant
+isolation, and a manual security review pass against
+Section 2C and 2D.
+Finalize Render deployment configuration for staging and
+production.
+Phase 10 — Final Verification Against This Document
+Go through every single checkbox in Section 2, item by
+item, and confirm build status: done / partially done with
+explanation / explicitly deferred with reasoning given to the
+user.
+Do not mark this phase complete until every item has a
+stated status. Silence on any item is not acceptable.
+4. WHEN YOU ARE UNSURE
+If at any point a requirement conflicts with another, a credential
+is missing, or a design decision (like the Firestore/Supabase
+split, or the OTP provider replacement) isn't fully specified here
+— ask the user directly before proceeding, and reference the
+exact section/item number from this document you need
+clarification on. Do not silently choose an interpretation and
+move on for a system of this sensitivity.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-14T17:37:26+05:30.
+</ADDITIONAL_METADATA>

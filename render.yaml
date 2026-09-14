@@ -1,10 +1,58 @@
 services:
+  # Production Backend
   - type: web
-    name: sjb-qpgen-backend
+    name: qpgen-backend-prod
+    env: docker
+    rootDir: backend
+    plan: starter
+    region: singapore
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: OTP_FROM_EMAIL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # Staging Backend
+  - type: web
+    name: qpgen-backend-staging
     env: docker
     rootDir: backend
     plan: free
+    region: singapore
     envVars:
+      - key: NODE_ENV
+        value: staging
       - key: PORT
         value: 5000
-      # Render will automatically use the Dockerfile we created in the backend folder
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: OTP_FROM_EMAIL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
