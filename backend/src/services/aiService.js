@@ -1,10 +1,4 @@
-const { GoogleGenAI } = require('@google/genai');
-
-const apiKey = process.env.GEMINI_API_KEY;
-let ai;
-if (apiKey && apiKey !== 'your_free_gemini_api_key_here') {
-  ai = new GoogleGenAI({ apiKey: apiKey });
-}
+const aiKeyManager = require('./aiKeyManager');
 
 /**
  * Uses Gemini API to infer missing BTL and CO from a question.
@@ -12,11 +6,6 @@ if (apiKey && apiKey !== 'your_free_gemini_api_key_here') {
  * @returns {Promise<{btl: string, co: string}>}
  */
 const inferTags = async (questionText) => {
-  if (!ai) {
-    console.warn("Gemini API not configured. Returning default tags.");
-    return { btl: 'L1', co: 'CO1' }; // Fallback if no API key
-  }
-
   const prompt = `
     You are an expert in Outcome-Based Education (OBE) for Engineering.
     Analyze the following exam question and classify it into:
@@ -32,13 +21,16 @@ const inferTags = async (questionText) => {
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      }
+    const response = await aiKeyManager.executeWithAI(async (ai) => {
+      return await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
     });
+    
     const text = response.text;
     const parsed = JSON.parse(text);
     return {
@@ -47,11 +39,7 @@ const inferTags = async (questionText) => {
     };
   } catch (error) {
     console.error("Error inferring tags for:", questionText.substring(0, 50), "...", error.message);
-    // Return safe default tags if AI inference fails due to 503 or Rate Limits
-    return {
-      btl: "L2",
-      co: "CO1"
-    };
+    return { btl: "L2", co: "CO1" };
   }
 };
 
@@ -61,13 +49,15 @@ const inferTags = async (questionText) => {
  * @returns {Promise<number[]>}
  */
 const generateEmbedding = async (text) => {
-  if (!ai) {
-    console.warn("Gemini API not configured. Returning default embedding.");
-    return Array(768).fill(0.0);
-  }
   try {
-    const response = await ai.models.embedContent({ model: 'text-embedding-004', contents: text });
-    return response.embedding.values;
+    const response = await aiKeyManager.executeWithAI(async (ai) => {
+      return await ai.models.embedContent({ 
+        model: 'gemini-embedding-2', 
+        contents: text,
+        config: { outputDimensionality: 768 }
+      });
+    }, 'embed');
+    return response.embeddings[0].values;
   } catch (error) {
     console.error("Error generating embedding:", error.message);
     return Array(768).fill(0.0);
@@ -81,25 +71,22 @@ const generateEmbedding = async (text) => {
  * @returns {Promise<boolean>}
  */
 const checkImageSanity = async (base64Image, mimeType) => {
-  if (!ai) {
-    console.warn("Gemini API not configured. Defaulting to true.");
-    return true;
-  }
-  
   const prompt = "Is this image a meaningful diagram, chart, or equation that should be included in an exam question? Answer only YES or NO.";
   
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [
-        {
-          inlineData: {
-            data: base64Image,
-            mimeType: mimeType
-          }
-        },
-        prompt
-      ]
+    const response = await aiKeyManager.executeWithAI(async (ai) => {
+      return await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            inlineData: {
+              data: base64Image,
+              mimeType: mimeType
+            }
+          },
+          prompt
+        ]
+      });
     });
     
     const text = response.text.trim().toUpperCase();

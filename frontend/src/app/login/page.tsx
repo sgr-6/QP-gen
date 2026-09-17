@@ -9,7 +9,6 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function LoginPage() {
   // Credentials
-  const [orgCode, setOrgCode] = useState("");
   const [email, setEmail] = useState("");
   
   // OTP
@@ -31,13 +30,13 @@ export default function LoginPage() {
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !orgCode) return;
+    if (!email) return;
     
     setLoading(true);
     setError("");
 
     try {
-      await api.post("/auth/otp/generate", { email, orgCode });
+      await api.post("/auth/otp/generate", { email });
       setStep("otp");
     } catch (err: any) {
       console.error("OTP Generate Error:", err);
@@ -121,24 +120,7 @@ export default function LoginPage() {
               onSubmit={handleCredentialsSubmit}
               className="flex flex-col gap-5"
             >
-              <div className="input-group" style={{ marginBottom: "16px" }}>
-                <label className="input-label font-medium mb-1 block">Institution Code</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                    <Building2 size={18} />
-                  </div>
-                  <input
-                    type="text"
-                    value={orgCode}
-                    onChange={(e) => setOrgCode(e.target.value.toUpperCase())}
-                    placeholder="e.g. SJBIT"
-                    className="pill-input w-full pl-10"
-                    style={{ paddingLeft: "40px" }}
-                    required
-                  />
-                </div>
-              </div>
-              
+
               <div className="input-group" style={{ marginBottom: "24px" }}>
                 <label className="input-label font-medium mb-1 block">Email Address</label>
                 <div className="relative">
@@ -160,7 +142,7 @@ export default function LoginPage() {
               <button 
                 type="submit" 
                 className="btn-primary w-full flex justify-center items-center gap-2 py-3" 
-                disabled={loading || !email || !orgCode}
+                disabled={loading || !email}
                 style={{ fontSize: "16px", padding: "12px 24px" }}
               >
                 {loading ? <><Loader2 size={18} className="animate-spin" /> Sending Code...</> : "Continue"}

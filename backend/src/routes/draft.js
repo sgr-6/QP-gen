@@ -15,7 +15,7 @@ const upload = multer({ dest: 'uploads/' });
 router.post(
   '/generate-draft',
   authenticate,
-  authorize('professor', 'hod', 'controller_of_exams'),
+  authorize('professor', 'hod'),
   auditLog('GENERATE_DRAFT', 'draft_paper'),
   generateDraft
 );
@@ -24,7 +24,7 @@ router.post(
 router.post(
   '/save',
   authenticate,
-  authorize('professor', 'hod', 'controller_of_exams'),
+  authorize('professor', 'hod'),
   auditLog('SAVE_DRAFT', 'draft_paper'),
   saveDraft
 );
@@ -33,7 +33,7 @@ router.post(
 router.get(
   '/list',
   authenticate,
-  authorize('professor', 'hod', 'controller_of_exams', 'early_access'),
+  authorize('professor', 'hod', 'controller_of_exams'),
   listDrafts
 );
 
@@ -41,7 +41,7 @@ router.get(
 router.put(
   '/:id/status',
   authenticate,
-  authorize('professor', 'hod', 'controller_of_exams'),
+  authorize('hod', 'controller_of_exams'),
   auditLog('UPDATE_DRAFT_STATUS', 'draft_paper'),
   updateDraftStatus
 );
@@ -74,7 +74,7 @@ router.get(
 router.get(
   '/:id/download',
   authenticate,
-  authorize('professor', 'hod', 'controller_of_exams', 'early_access', 'super_admin'),
+  authorize('professor', 'hod', 'controller_of_exams'),
   downloadLimiter,
   auditLog('DOWNLOAD_DRAFT', 'draft_paper'),
   downloadDraft

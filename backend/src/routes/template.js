@@ -14,7 +14,7 @@ const upload = multer({
 router.post(
   '/extract',
   authenticate,
-  authorize('hod', 'controller_of_exams', 'tenant_admin'),
+  authorize('hod'),
   upload.single('file'),
   extractTemplate
 );

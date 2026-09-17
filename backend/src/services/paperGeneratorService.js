@@ -1,277 +1,178 @@
 const { db, admin } = require('../config/firebaseAdmin');
 const MarkdownIt = require('markdown-it');
 const md = new MarkdownIt({ html: true, breaks: true });
+const aiKeyManager = require('./aiKeyManager');
 
 /**
- * Core Algorithm for Paper Generation:
- * 1. Fetch questions matching the course title and tenantId.
- * 2. Group them by Module (1-5).
- * 3. Inside each Module, try to form 2 sets (Split A and Split B) exactly totaling 20 marks each.
- * 4. L1/L2 <= 30% of total marks.
- * 
- * @param {string} courseTitle 
- * @param {string} examType
- * @param {Object} examConfig
- * @param {string} tenantId
- * @returns {Promise<Object>} Generated Paper
+ * AI-Powered Paper Generation Algorithm
+ * Fetches Syllabus, Notes, and Question Bank to intelligently generate a paper matching constraints.
  */
 const generatePaper = async (courseTitle, examType = 'semester', examConfig = null, tenantId) => {
   if (!tenantId) {
     throw new Error('Tenant ID is required for generation');
   }
 
+  // 1. Fetch available questions for the course
   let allQuestions = [];
-
-  // 1. Fetch available questions for the course by querying courseTitle and tenantId
   const banksQuery = await db.collection('question_banks')
     .where('courseTitle', '==', courseTitle)
     .where('tenantId', '==', tenantId)
     .get();
   
-  if (banksQuery.empty) {
-    throw new Error(`No question bank found for course: ${courseTitle}`);
-  }
-  
-  const bankDoc = banksQuery.docs[0];
-  const questionsSnapshot = await bankDoc.ref.collection('questions').get();
-  
-  if (questionsSnapshot.empty) {
-    throw new Error(`Question bank is empty for course: ${courseTitle}`);
+  if (!banksQuery.empty) {
+    const bankDoc = banksQuery.docs[0];
+    const questionsSnapshot = await bankDoc.ref.collection('questions').get();
+    questionsSnapshot.forEach(doc => allQuestions.push({ id: doc.id, ...doc.data() }));
   }
 
-  questionsSnapshot.forEach(doc => allQuestions.push(doc.data()));
+  // 2. Fetch Syllabus
+  const docId = `${tenantId}_${courseTitle.replace(/\s+/g, '_').toLowerCase()}`;
+  let syllabus = null;
+  const syllabusDoc = await db.collection('syllabi').doc(docId).get();
+  if (syllabusDoc.exists) syllabus = syllabusDoc.data();
 
-  // 2. We mock "Modules" assuming they exist in the question text or we just split the bank randomly into 5 logical pools.
-  // In a real system, the Normalization layer would extract the Module (M1-M5). 
-  // For this implementation, we will uniformly distribute the questions into 5 module pools.
-  const modulePools = { M1: [], M2: [], M3: [], M4: [], M5: [] };
-  
-  allQuestions.forEach((q, index) => {
-    let m = q.module;
-    if (m && typeof m === 'string') {
-      const match = m.match(/\d+/);
-      if (match && parseInt(match[0], 10) >= 1 && parseInt(match[0], 10) <= 5) {
-        m = `M${match[0]}`;
-      } else {
-        m = `M${(index % 5) + 1}`;
-      }
-    } else {
-      m = `M${(index % 5) + 1}`;
-    }
-    
-    if (!modulePools[m]) {
-      modulePools[m] = [];
-    }
-    modulePools[m].push(q);
-  });
+  // 3. Fetch Notes
+  let notes = null;
+  const notesDoc = await db.collection('notes').doc(docId).get();
+  if (notesDoc.exists) notes = notesDoc.data();
+
+  // Validate we have at least *some* data
+  if (allQuestions.length === 0 && !syllabus && !notes) {
+    throw new Error(`No question bank, syllabus, or notes found for course: ${courseTitle}. Cannot generate paper.`);
+  }
 
   const isInternal = examType === 'internal';
-  const targetParts = isInternal ? 2 : 5;
-  const targetMarks = isInternal ? 25 : 20;
+  const targetMarksPerSplit = isInternal ? 25 : 20;
+  const numModules = isInternal ? 2 : 5;
+  const maxL1L2 = isInternal ? 15 : 30; // 30% of total
 
-  const paper = {
-    courseTitle,
-    examType,
-    generatedAt: new Date().toISOString(),
-    totalMarks: isInternal ? 50 : 100,
-    modules: [],
-    warnings: []
+  // 4. Construct Prompt
+  const prompt = `
+You are an expert exam paper setter for an engineering college. 
+Your task is to generate a highly structured exam paper in JSON format based on the provided Question Bank, Syllabus, and Course Notes.
+
+RULES:
+1. The exam type is "${examType}". You must generate exactly ${numModules} modules (named M1, M2...).
+2. For each module, you must provide a 'splitA' and a 'splitB' array of questions.
+3. The sum of 'marks' in 'splitA' MUST EXACTLY EQUAL ${targetMarksPerSplit}.
+4. The sum of 'marks' in 'splitB' MUST EXACTLY EQUAL ${targetMarksPerSplit}.
+5. You must select questions from the provided "Question Bank". If the bank lacks sufficient questions for a module, you MUST formulate new realistic exam questions based on the "Syllabus" and "Notes" to reach exactly the required marks.
+6. Academic Rigor: The total sum of marks for all questions in the entire paper that have a BTL of "L1" or "L2" MUST NOT exceed ${maxL1L2} marks.
+7. BTL must be one of: L1, L2, L3, L4, L5, L6. CO must be one of: CO1, CO2, CO3, CO4, CO5.
+8. Output strictly a JSON object matching this schema exactly, with NO markdown code blocks.
+9. Also infer metadata for the paper header based on the syllabus or general academic context (e.g., Exam Name, Duration, Max Marks, Semester, Date). Use generic placeholder dates if none are found.
+
+CRITICAL INSTRUCTION FOR IMAGES AND FORMATTING:
+To prevent loss of images, graphs, and formatting, you MUST return the 'id' of the question from the Question Bank and set 'isNew': false. Do NOT include 'questionText' if 'isNew' is false.
+If you are formulating a completely new question, set 'isNew': true, 'id': null, and provide the 'questionText'.
+
+SCHEMA:
+{
+  "courseTitle": "${courseTitle}",
+  "examType": "${examType}",
+  "totalMarks": ${isInternal ? 50 : 100},
+  "warnings": ["List any rules you had to break, if any"],
+  "headerMetadata": {
+    "examTitle": "First Semester B E Degree Semester End Examination (SEE), July 2024",
+    "semester": "1st",
+    "subjectCode": "23MAT11A",
+    "qpCode": "11101",
+    "date": "July 2024",
+    "duration": "3 Hours",
+    "marks": 100
+  },
+  "modules": [
+    {
+      "moduleNumber": "M1",
+      "splitA": [ 
+        { "id": "q_0", "isNew": false, "marks": 10, "btl": "L2", "co": "CO1" },
+        { "id": null, "isNew": true, "questionText": "Formulate a new question here", "marks": 10, "btl": "L3", "co": "CO1" }
+      ],
+      "splitB": [ 
+        { "id": "q_5", "isNew": false, "marks": 20, "btl": "L3", "co": "CO2" }
+      ]
+    }
+  ]
+}
+
+INPUT DATA:
+Question Bank: ${JSON.stringify(allQuestions.map(q => ({ id: q.id, text: q.questionText, marks: q.marks, btl: q.btl, co: q.co, module: q.module })))}
+Syllabus: ${JSON.stringify(syllabus)}
+Notes: ${JSON.stringify(notes)}
+  `;
+
+  // 5. Call Gemini AI with key rotation
+  const response = await aiKeyManager.executeWithAI(async (ai) => {
+    return await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+  });
+
+  const text = response.text;
+  let paper;
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      paper = JSON.parse(jsonMatch[0]);
+    } else {
+      paper = JSON.parse(text);
+    }
+  } catch (e) {
+    throw new Error("AI generated invalid JSON for the paper.");
+  }
+
+  paper.generatedAt = new Date().toISOString();
+  if (!paper.warnings) paper.warnings = [];
+
+  const reconstructQuestions = (split) => {
+    return split.map(q => {
+      if (q.isNew === false && q.id) {
+        const bankQ = allQuestions.find(bq => bq.id === q.id);
+        if (bankQ) {
+          return {
+            id: q.id,
+            isNew: false,
+            questionText: bankQ.questionText, // PERFECTLY preserve formatting & images
+            marks: q.marks || bankQ.marks,
+            btl: q.btl || bankQ.btl,
+            co: q.co || bankQ.co
+          };
+        }
+      }
+      return {
+        id: null,
+        isNew: true,
+        questionText: q.questionText || "Missing text",
+        marks: q.marks || 5,
+        btl: q.btl || 'L2',
+        co: q.co || 'CO1'
+      };
+    });
   };
 
-  let totalL1L2Marks = 0;
-
-  // 3. Generate Modules
-  const moduleNames = isInternal ? ['M1', 'M2'] : ['M1', 'M2', 'M3', 'M4', 'M5'];
-  
-  moduleNames.forEach(m => {
-    const pool = modulePools[m] || [];
-    
-    // We need two splits for each module (e.g. 1a, 1b OR 2a, 2b) with the target marks
-    const split1 = buildValidSplit(pool, targetMarks);
-    
-    // Remove the questions used in split1 from the pool so split2 gets different questions
-    // We compare by questionText because buildValidSplit returns cloned objects
-    let poolForSplit2 = pool.filter(q => !split1.some(s => s.questionText === q.questionText));
-    
-    // Professional fallback: If this module doesn't have enough remaining questions, borrow from other modules
-    if (poolForSplit2.length < 2) {
-      const unusedGlobally = allQuestions.filter(q => !split1.some(s => s.questionText === q.questionText));
-      poolForSplit2 = unusedGlobally;
-      
-      // Extreme fallback for tiny databases (e.g. a single 14-question PDF)
-      if (poolForSplit2.length < 2) {
-        poolForSplit2 = [...allQuestions]; // Allow repeats if the bank is critically small
+  // 6. Pre-render HTML for frontend and reconstruct formatting
+  if (paper.modules) {
+    paper.modules.forEach(mod => {
+      if (mod.splitA) {
+        mod.splitA = reconstructQuestions(mod.splitA);
+        mod.splitA.forEach(q => {
+          if (q.questionText) q.htmlText = md.render(q.questionText);
+        });
       }
-    }
-
-    const split2 = buildValidSplit(poolForSplit2, targetMarks); 
-
-    if (!split1 || !split2) {
-      throw new Error(`Module ${m} lacks sufficient valid questions to form exactly ${targetMarks}-mark splits.`);
-    }
-
-    paper.modules.push({
-      moduleNumber: m,
-      splitA: split1,
-      splitB: split2
-    });
-    
-    // Check for duplicates
-    [...split1, ...split2].forEach(q => {
-      if (q.isDuplicate) {
-        paper.warnings.push(`Warning: Question "${q.questionText.substring(0, 30)}..." was flagged as a duplicate of another question in the database.`);
+      if (mod.splitB) {
+        mod.splitB = reconstructQuestions(mod.splitB);
+        mod.splitB.forEach(q => {
+          if (q.questionText) q.htmlText = md.render(q.questionText);
+        });
       }
     });
-
-    // Track L1/L2 weighting
-    totalL1L2Marks += getL1L2Marks(split1) + getL1L2Marks(split2); 
-  });
-
-  // 4. Academic Rigor Constraint: L1/L2 <= 30%
-  // Since students answer one split per module (5 splits total = 100 marks), 
-  // we must ensure that any valid path a student takes does not exceed 30 marks of L1/L2.
-  // We will run a validation check over the generated paper.
-  validateAcademicRigor(paper);
-
-  // Pre-render markdown to HTML on the backend to avoid frontend crashes
-  paper.modules.forEach(mod => {
-    if (mod.splitA) {
-      mod.splitA.forEach(q => {
-        if (q.questionText) {
-          q.htmlText = md.render(q.questionText);
-        }
-      });
-    }
-    if (mod.splitB) {
-      mod.splitB.forEach(q => {
-        if (q.questionText) {
-          q.htmlText = md.render(q.questionText);
-        }
-      });
-    }
-  });
+  }
 
   return paper;
 };
 
-/**
- * Shuffles an array in-place.
- */
-const shuffleArray = (array) => {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-};
-
-/**
- * Builds a split (e.g. 1a and 1b) that sums exactly to targetMarks (20).
- * It will shuffle the pool for randomness, and allow a 3-mark buffer.
- */
-const buildValidSplit = (pool, targetMarks, buffer = 3) => {
-  const shuffledPool = shuffleArray([...pool]);
-
-  const try2Questions = () => {
-    for (let i = 0; i < shuffledPool.length; i++) {
-      for (let j = i + 1; j < shuffledPool.length; j++) {
-        let sum = shuffledPool[i].marks + shuffledPool[j].marks;
-        if (Math.abs(sum - targetMarks) <= buffer) {
-          let q1 = { ...shuffledPool[i] };
-          let q2 = { ...shuffledPool[j] };
-          let diff = targetMarks - sum;
-          q1.marks += diff;
-          return [q1, q2];
-        }
-      }
-    }
-    return null;
-  };
-
-  const try3Questions = () => {
-    for (let i = 0; i < shuffledPool.length; i++) {
-      for (let j = i + 1; j < shuffledPool.length; j++) {
-        for (let k = j + 1; k < shuffledPool.length; k++) {
-          let sum = shuffledPool[i].marks + shuffledPool[j].marks + shuffledPool[k].marks;
-          if (Math.abs(sum - targetMarks) <= buffer) {
-            let q1 = { ...shuffledPool[i] };
-            let q2 = { ...shuffledPool[j] };
-            let q3 = { ...shuffledPool[k] };
-            let diff = targetMarks - sum;
-            q1.marks += diff;
-            return [q1, q2, q3];
-          }
-        }
-      }
-    }
-    return null;
-  };
-
-  // Randomly decide whether to try 3 subquestions or 2 subquestions first
-  let result = null;
-  if (Math.random() > 0.5) {
-    result = try3Questions() || try2Questions();
-  } else {
-    result = try2Questions() || try3Questions();
-  }
-
-  if (result) return result;
-
-  // Recursive relaxation of buffer before falling back
-  if (buffer < 5) {
-    return buildValidSplit(pool, targetMarks, buffer + 1);
-  }
-
-  // Fallback
-  if (shuffledPool.length >= 2) {
-    let q1 = { ...shuffledPool[0] };
-    let q2 = { ...shuffledPool[1] };
-    q1.marks = Math.floor(targetMarks / 2);
-    q2.marks = Math.ceil(targetMarks / 2);
-    return [q1, q2];
-  }
-  
-  if (shuffledPool.length === 1) {
-    let q1 = { ...shuffledPool[0] };
-    q1.marks = targetMarks;
-    return [q1];
-  }
-  
-  // Extreme fallback (should not happen with our new global pool fallback, but kept for safety)
-  return [
-    { questionText: 'Describe the core concepts of this module in detail.', marks: Math.floor(targetMarks / 2), btl: 'L2', co: 'CO1' },
-    { questionText: 'Analyze the applications and provide relevant examples.', marks: Math.ceil(targetMarks / 2), btl: 'L3', co: 'CO2' }
-  ];
-};
-
-const getL1L2Marks = (split) => {
-  return split.reduce((sum, q) => {
-    if (q.btl === 'L1' || q.btl === 'L2') {
-      return sum + q.marks;
-    }
-    return sum;
-  }, 0);
-};
-
-const validateAcademicRigor = (paper) => {
-  let maxL1L2 = 0;
-  paper.modules.forEach(m => {
-    const splitAMarks = getL1L2Marks(m.splitA);
-    const splitBMarks = getL1L2Marks(m.splitB);
-    maxL1L2 += Math.max(splitAMarks, splitBMarks);
-  });
-
-  if (maxL1L2 > 30) {
-    const warning = `Academic Rigor Warning: Maximum possible L1/L2 marks is ${maxL1L2}, which exceeds the 30% limit.`;
-    console.warn(warning);
-    paper.warnings.push(warning);
-  }
-};
-
 module.exports = {
-  generatePaper,
-  // Exported for testing
-  buildValidSplit,
-  validateAcademicRigor,
-  getL1L2Marks
+  generatePaper
 };

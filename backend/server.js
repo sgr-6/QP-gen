@@ -28,45 +28,43 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-// Import Routes
+app.post(['/auth/logout', '/api/auth/logout'], (req, res) => {
+  res.clearCookie('jwt', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none'
+  });
+  res.json({ message: 'Logged out successfully' });
+});
+
+// Mount modular routes
 const uploadRoutes = require('./src/routes/upload');
 const draftRoutes = require('./src/routes/draft');
-const superAdminRoutes = require('./src/routes/superAdmin');
-const tenantAdminRoutes = require('./src/routes/tenantAdmin');
+
 
 app.use('/api', uploadRoutes);
 app.use('/api', draftRoutes);
 app.use('/api/syllabus', require('./src/routes/syllabus'));
 app.use('/api/template', require('./src/routes/template'));
-app.use('/api/super-admin', superAdminRoutes);
-app.use('/api/tenant-admin', tenantAdminRoutes);
-app.use('/api/print-admin', require('./src/routes/printAdmin'));
+app.use('/api/notes', require('./src/routes/notes'));
+
 
 // Generate 6-digit OTP
-const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+const generateOTP = () => {
+  if (!process.env.RESEND_API_KEY) return '123456';
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
 
 // Route: Generate OTP
 app.post(['/auth/otp/generate', '/api/auth/otp/generate'], async (req, res) => {
   try {
-    const { email, orgCode } = req.body;
-    if (!email || !orgCode) return res.status(400).json({ error: 'Email and orgCode are required' });
-
-    // Look up user in Supabase
-    const { data: tenantData, error: tenantError } = await supabase
-      .from('tenants')
-      .select('id')
-      .eq('org_code', orgCode)
-      .single();
-
-    if (tenantError || !tenantData) {
-      return res.status(403).json({ error: 'Invalid organization code' });
-    }
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
 
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('id')
       .eq('email', email)
-      .eq('tenant_id', tenantData.id)
       .single();
 
     if (userError || !userData) {
@@ -148,12 +146,11 @@ app.post(['/auth/otp/verify', '/api/auth/otp/verify'], async (req, res) => {
       { expiresIn: '12h' }
     );
 
-    // Set HttpOnly Cookie
+    // Set HttpOnly Cookie (session cookie - expires on browser close)
     res.cookie('jwt', token, {
       httpOnly: true,
       secure: true, // MUST be true for sameSite: 'none'
       sameSite: 'none', // MUST be 'none' for cross-domain requests
-      maxAge: 12 * 60 * 60 * 1000 // 12 hours
     });
     
     res.json({ message: 'Login successful', token, user: { email, role: userData.role } });

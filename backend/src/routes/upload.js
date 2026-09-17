@@ -9,7 +9,7 @@ const { auditLog } = require('../middleware/auditLog');
 router.post(
   '/upload',
   authenticate,
-  authorize('professor', 'hod', 'controller_of_exams', 'tenant_admin'),
+  authorize('hod'),
   auditLog('UPLOAD', 'question_bank'),
   upload.single('file'),
   uploadFile
@@ -20,7 +20,7 @@ router.post(
 router.get(
   '/question-banks',
   authenticate,
-  authorize('professor', 'hod', 'controller_of_exams', 'tenant_admin'),
+  authorize('hod', 'professor'),
   auditLog('VIEW', 'question_bank'),
   getQuestionBanks
 );

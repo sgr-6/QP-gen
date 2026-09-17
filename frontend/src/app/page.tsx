@@ -16,15 +16,19 @@ export default function ExamDashboard() {
   // Set default tab based on role
   useEffect(() => {
     if (currentUser) {
-      if (hasRole('early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin')) {
+      if (hasRole('hod')) {
         setActiveTab('upload');
-      } else if (hasRole('super_admin')) {
-        setActiveTab('admin');
+      } else if (hasRole('professor')) {
+        setActiveTab('generate');
+      } else if (hasRole('controller_of_exams')) {
+        setActiveTab('review');
+      } else {
+        setActiveTab('analytics');
       }
     }
   }, [currentUser, hasRole]);
 
-  const [uploadMode, setUploadMode] = useState<'bank' | 'syllabus'>('bank');
+  const [uploadMode, setUploadMode] = useState<'bank' | 'syllabus' | 'notes'>('bank');
 
   const [file, setFile] = useState<File | null>(null);
   const [courseTitle, setCourseTitle] = useState('');
@@ -167,6 +171,39 @@ export default function ExamDashboard() {
     }
   };
 
+  const handleNotesUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file || !courseTitle || !department || !semester || !subjectCode) return;
+    
+    setUploadStatus('uploading');
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('courseTitle', courseTitle);
+    formData.append('department', department);
+    formData.append('semester', semester);
+    formData.append('subjectCode', subjectCode);
+
+    try {
+      const res = await api.post(`/api/notes/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      console.log('Notes upload success:', res.data);
+      setUploadStatus('success');
+      setTimeout(() => {
+        setUploadStatus('idle');
+        setFile(null);
+        setCourseTitle('');
+        setDepartment('');
+        setSemester('');
+        setSubjectCode('');
+      }, 3000);
+    } catch (error) {
+      console.error('Notes upload error:', error);
+      setUploadStatus('error');
+      setTimeout(() => setUploadStatus('idle'), 3000);
+    }
+  };
+
   const handleTemplateUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!templateFile) return;
@@ -182,14 +219,25 @@ export default function ExamDashboard() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       console.log('Template extraction success:', res.data);
-      setExtractedTemplate(res.data.templateConfig || res.data);
+      setExtractedTemplate(res.data.template);
       setTemplateStatus('success');
+      alert('Template format extracted successfully! Future drafts will use this format.');
     } catch (error: any) {
       console.error('Template extraction error:', error);
       setErrorMessage(error.response?.data?.error || 'Failed to extract template.');
       setTemplateStatus('error');
       setTimeout(() => setTemplateStatus('idle'), 5000);
     }
+  };
+
+  const handleHeaderChange = (key: string, value: any) => {
+    setDraftPaper((prev: any) => ({
+      ...prev,
+      headerMetadata: {
+        ...(prev?.headerMetadata || {}),
+        [key]: value
+      }
+    }));
   };
 
   const handleGenerate = async () => {
@@ -351,16 +399,16 @@ export default function ExamDashboard() {
           QP Gen
         </div>
         <nav className="nav-menu">
-          {hasRole('early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
+          {hasRole('hod') && (
             <button 
               onClick={() => setActiveTab('upload')}
               className={`nav-item ${activeTab === 'upload' ? 'active' : ''}`}
             >
-              <UploadCloud size={18} /> Bank Upload
+              <UploadCloud size={18} /> Data Ingestion
             </button>
           )}
           
-          {hasRole('early_access', 'professor', 'hod', 'controller_of_exams') && (
+          {hasRole('professor', 'hod') && (
             <button 
               onClick={() => setActiveTab('generate')}
               className={`nav-item ${activeTab === 'generate' ? 'active' : ''}`}
@@ -393,15 +441,6 @@ export default function ExamDashboard() {
           >
             <BarChart3 size={18} /> Analytics
           </button>
-
-          {hasRole('tenant_admin', 'super_admin') && (
-            <button 
-              onClick={() => setActiveTab('admin')}
-              className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
-            >
-              <ShieldCheck size={18} /> Admin
-            </button>
-          )}
         </nav>
         <div style={{ flex: 1 }}></div>
         <div className="nav-menu">
@@ -433,14 +472,16 @@ export default function ExamDashboard() {
         <div className="content-area">
           
           {/* UPLOAD TAB */}
-          {activeTab === 'upload' && hasRole('early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
+          {activeTab === 'upload' && hasRole('hod') && (
             <div className="animate-in">
               <div style={{ marginBottom: '32px' }}>
                 <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>Data Ingestion</h3>
                 <p style={{ color: 'var(--text-muted)' }}>
                   {uploadMode === 'bank' 
                     ? "Upload DOCX. The AI normalization layer will automatically infer missing Bloom's Taxonomy and Course Outcomes."
-                    : "Upload Syllabus (PDF or DOCX). AI will extract modules, COs, and Bloom's mapping for paper generation constraints."}
+                    : uploadMode === 'syllabus' 
+                    ? "Upload Syllabus (PDF or DOCX). AI will extract modules, COs, and Bloom's mapping for paper generation constraints."
+                    : "Upload Course Notes (PDF or DOCX). AI will index the text to help generate diverse and context-aware questions."}
                 </p>
               </div>
 
@@ -452,7 +493,7 @@ export default function ExamDashboard() {
                   className={`btn-primary ${uploadMode === 'bank' ? '' : 'btn-secondary'}`}
                   style={{ width: 'auto', padding: '8px 16px', flex: 1, backgroundColor: uploadMode === 'bank' ? 'var(--primary-purple)' : '#EDF2F7', color: uploadMode === 'bank' ? 'white' : 'var(--text-main)', border: 'none' }}
                 >
-                  Upload Question Bank
+                  Question Bank
                 </button>
                 <button 
                   type="button"
@@ -460,12 +501,20 @@ export default function ExamDashboard() {
                   className={`btn-primary ${uploadMode === 'syllabus' ? '' : 'btn-secondary'}`}
                   style={{ width: 'auto', padding: '8px 16px', flex: 1, backgroundColor: uploadMode === 'syllabus' ? 'var(--primary-purple)' : '#EDF2F7', color: uploadMode === 'syllabus' ? 'white' : 'var(--text-main)', border: 'none' }}
                 >
-                  Upload Syllabus
+                  Syllabus
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setUploadMode('notes')}
+                  className={`btn-primary ${uploadMode === 'notes' ? '' : 'btn-secondary'}`}
+                  style={{ width: 'auto', padding: '8px 16px', flex: 1, backgroundColor: uploadMode === 'notes' ? 'var(--primary-purple)' : '#EDF2F7', color: uploadMode === 'notes' ? 'white' : 'var(--text-main)', border: 'none' }}
+                >
+                  Course Notes
                 </button>
               </div>
 
               <div className="card">
-                <form onSubmit={uploadMode === 'bank' ? handleUpload : handleSyllabusUpload}>
+                <form onSubmit={uploadMode === 'bank' ? handleUpload : uploadMode === 'syllabus' ? handleSyllabusUpload : handleNotesUpload}>
                   <div className="input-group">
                     <label className="input-label">Department</label>
                     <input 
@@ -528,7 +577,7 @@ export default function ExamDashboard() {
                           <UploadCloud size={40} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
                           <p style={{ color: 'var(--text-main)', fontWeight: 500 }}>Click to upload or drag and drop</p>
                           <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '8px' }}>
-                            {uploadMode === 'bank' ? 'DOCX format only' : 'PDF or DOCX format'}
+                            {uploadMode === 'bank' ? 'DOCX/PDF format' : 'PDF or DOCX format'}
                           </p>
                         </div>
                       )}
@@ -548,13 +597,13 @@ export default function ExamDashboard() {
                       className="btn-primary"
                     >
                       {uploadStatus === 'uploading' ? (
-                        <span>{uploadMode === 'bank' ? 'Parsing & Normalizing via AI...' : 'Parsing & Structuring Syllabus via AI...'}</span>
+                        <span>{uploadMode === 'bank' ? 'Parsing & Normalizing via AI...' : uploadMode === 'syllabus' ? 'Parsing & Structuring Syllabus via AI...' : 'Parsing Notes via AI...'}</span>
                       ) : uploadStatus === 'success' ? (
-                        <span>{uploadMode === 'bank' ? 'Bank Ingested Successfully!' : 'Syllabus Ingested Successfully!'}</span>
+                        <span>{uploadMode === 'bank' ? 'Bank Ingested Successfully!' : uploadMode === 'syllabus' ? 'Syllabus Ingested Successfully!' : 'Notes Ingested Successfully!'}</span>
                       ) : uploadStatus === 'error' ? (
                         <span>Ingestion Failed</span>
                       ) : (
-                        <span>{uploadMode === 'bank' ? 'Ingest Question Bank' : 'Ingest Syllabus'}</span>
+                        <span>{uploadMode === 'bank' ? 'Ingest Question Bank' : uploadMode === 'syllabus' ? 'Ingest Syllabus' : 'Ingest Notes'}</span>
                       )}
                     </button>
                   </div>
@@ -564,7 +613,7 @@ export default function ExamDashboard() {
           )}
 
           {/* GENERATE TAB */}
-          {activeTab === 'generate' && hasRole('early_access', 'professor', 'hod', 'controller_of_exams') && (
+          {activeTab === 'generate' && hasRole('professor', 'hod') && (
             <div className="animate-in">
               <div style={{ marginBottom: '32px' }}>
                 <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>Paper Generation</h3>
@@ -575,6 +624,32 @@ export default function ExamDashboard() {
                 selectedType={selectedExamType} 
                 onSelect={setSelectedExamType} 
               />
+
+              {/* Template Upload Block */}
+              <div className="card" style={{ marginTop: '24px', marginBottom: '24px', background: '#F8F9FA' }}>
+                <h4 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>Format Configuration (Optional)</h4>
+                <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '16px' }}>Upload a previous Question Paper PDF to automatically extract your institution's specific formatting.</p>
+                <form onSubmit={handleTemplateUpload} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <input 
+                      type="file" 
+                      accept=".pdf"
+                      onChange={(e) => setTemplateFile(e.target.files ? e.target.files[0] : null)}
+                      className="pill-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <button 
+                    type="submit" 
+                    disabled={templateStatus === 'extracting' || !templateFile}
+                    className="btn-primary"
+                    style={{ width: 'auto', padding: '10px 24px' }}
+                  >
+                    {templateStatus === 'extracting' ? 'Extracting...' : 'Extract Format'}
+                  </button>
+                </form>
+                {templateStatus === 'success' && <p style={{ color: '#38A169', marginTop: '8px', fontSize: '14px' }}>Format extracted successfully!</p>}
+              </div>
               
               {selectedExamType && (
                 <motion.div 
@@ -701,59 +776,155 @@ export default function ExamDashboard() {
                       <Send size={16} /> Submit for Review
                     </button>
                   </div>
+
+                  {/* HEADER EDITOR UI */}
+                  <div className="print-hidden" style={{ background: '#f8fafc', padding: '24px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '32px' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>Edit Header Format</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div className="input-group">
+                        <label className="input-label">Institution Name</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.institution || ''} onChange={(e) => handleHeaderChange('institution', e.target.value)} />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Subtitle (e.g. Autonomous...)</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.subtitle || ''} onChange={(e) => handleHeaderChange('subtitle', e.target.value)} />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Exam Title</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.examTitle || ''} onChange={(e) => handleHeaderChange('examTitle', e.target.value)} />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Course Title</label>
+                        <input type="text" className="pill-input" value={draftPaper.courseTitle || ''} onChange={(e) => setDraftPaper({...draftPaper, courseTitle: e.target.value})} />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">QP Code</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.qpCode || ''} onChange={(e) => handleHeaderChange('qpCode', e.target.value)} />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Subject Code</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.subjectCode || ''} onChange={(e) => handleHeaderChange('subjectCode', e.target.value)} />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Duration</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.duration || ''} onChange={(e) => handleHeaderChange('duration', e.target.value)} />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Max Marks</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.marks || ''} onChange={(e) => handleHeaderChange('marks', e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
                   
-                  <div className="text-center" style={{ marginBottom: '32px' }}>
-                    <h2 style={{ fontSize: '24px', fontWeight: 700, textTransform: 'uppercase', borderBottom: '2px solid black', display: 'inline-block', paddingBottom: '8px' }}>
-                      {draftPaper.courseTitle}
-                    </h2>
+                  {/* VTU PREVIEW VISUAL */}
+                  <div className="table-wrapper" style={{ marginBottom: '0' }}>
+                    <table style={{ margin: '0', borderBottom: 'none', borderCollapse: 'collapse', width: '100%' }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ padding: '0', border: '1px solid black', borderBottom: '1px solid black' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch' }}>
+                              <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                                <div style={{ fontWeight: 'bold', padding: '5px 10px', borderRight: '1px solid black', display: 'flex', alignItems: 'center' }}>USN</div>
+                                {Array(10).fill(0).map((_, i) => <div key={i} style={{ width: '25px', borderRight: '1px solid black' }}></div>)}
+                              </div>
+                              <div style={{ fontWeight: 'bold', fontSize: '14pt', padding: '5px 10px', display: 'flex', alignItems: 'center' }}>
+                                {draftPaper.headerMetadata?.subjectCode || 'XX00XX'}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12pt', padding: '5px', border: '1px solid black' }}>
+                            {draftPaper.headerMetadata?.institution || 'Unknown Institution'}<br/>
+                            {draftPaper.headerMetadata?.examTitle || 'Semester End Examination'}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14pt', padding: '5px', border: '1px solid black' }}>
+                            {draftPaper.courseTitle || 'COURSE TITLE'}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ textAlign: 'center', padding: '2px', border: '1px solid black' }}>
+                            ({draftPaper.headerMetadata?.subtitle || 'Model Question Paper'})
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '0', border: '1px solid black' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 10px' }}>
+                              <div style={{ fontWeight: 'bold' }}>[Time: {draftPaper.headerMetadata?.duration || '3 Hours'}]</div>
+                              <div style={{ fontWeight: 'bold' }}>[Maximum Marks: {draftPaper.headerMetadata?.marks || draftPaper.totalMarks || 100}]</div>
+                            </div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '5px 10px', textAlign: 'left', border: '1px solid black' }}>
+                            <div style={{ textAlign: 'center', fontWeight: 'bold', textDecoration: 'underline', marginBottom: '5px' }}>Instructions to students:</div>
+                            {(draftPaper.headerMetadata?.instructions || [
+                              'Answer FIVE FULL Questions as per choice.',
+                              'Use BLACK ball point pen for text, figure, table, etc.',
+                              'Assume missing data, if any.'
+                            ]).map((inst: string, i: number) => {
+                              const romans = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x'];
+                              return (
+                              <div key={i} style={{ display: 'flex', marginBottom: '2px' }}>
+                                <div style={{ width: '25px', fontWeight: 'bold' }}>{romans[i] || (i + 1)}.</div>
+                                <div>{inst}</div>
+                              </div>
+                            )})}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
 
-                  <div className="table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style={{ width: '5%' }}>Q No</th>
-                        <th style={{ width: '5%' }}>Sub</th>
-                        <th style={{ width: '60%' }}>Question Text</th>
-                        <th style={{ width: '10%' }}>Marks</th>
-                        <th style={{ width: '10%' }}>CO</th>
-                        <th style={{ width: '10%' }}>RBT</th>
-                      </tr>
-                    </thead>
+                  <div className="table-wrapper" style={{ marginTop: '0' }}>
+                  <table style={{ borderTop: 'none', borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: '5%' }} />
+                      <col style={{ width: '5%' }} />
+                      <col style={{ width: '60%' }} />
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '10%' }} />
+                    </colgroup>
                     <tbody>
                       {draftPaper.modules.map((mod: any, mIdx: number) => (
                         <React.Fragment key={mIdx}>
                           <tr>
-                            <td colSpan={6} className="text-center" style={{ fontWeight: 700, backgroundColor: '#F8F9FA' }}>
+                            <td colSpan={3} className="text-center" style={{ fontWeight: 700, border: '1px solid black', padding: '5px' }}>
                               {selectedExamType === 'internal' ? `Part ${mIdx + 1}` : `Module ${mod.moduleNumber}`}
                             </td>
+                            <td className="text-center" style={{ fontWeight: 700, border: '1px solid black', padding: '5px' }}>Marks</td>
+                            <td className="text-center" style={{ fontWeight: 700, border: '1px solid black', padding: '5px' }}>CO</td>
+                            <td className="text-center" style={{ fontWeight: 700, border: '1px solid black', padding: '5px' }}>RBT Level</td>
                           </tr>
                           
                           {/* Split A */}
                           {mod.splitA.map((q: any, i: number) => (
                             <tr key={'a'+i}>
-                              <td className="text-center">{i === 0 ? (mIdx*2 + 1) : ''}</td>
-                              <td className="text-center">{String.fromCharCode(97 + i)})</td>
-                              <td dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} />
-                              <td className="text-center">[{String(q.marks).padStart(2, '0')}]</td>
-                              <td className="text-center">{q.co}</td>
-                              <td className="text-center">{q.btl}</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{i === 0 ? (mIdx*2 + 1) + '.' : ''}</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{String.fromCharCode(97 + i)})</td>
+                              <td className="q-text text-left" dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} style={{ border: '1px solid black', padding: '5px' }} />
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{q.co}</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{q.btl}</td>
                             </tr>
                           ))}
 
                           <tr>
-                            <td colSpan={6} className="text-center" style={{ fontWeight: 700 }}>OR</td>
+                            <td colSpan={6} className="text-center" style={{ fontWeight: 700, border: '1px solid black', padding: '5px' }}>OR</td>
                           </tr>
 
                           {/* Split B */}
                           {mod.splitB.map((q: any, i: number) => (
                             <tr key={'b'+i}>
-                              <td className="text-center">{i === 0 ? (mIdx*2 + 2) : ''}</td>
-                              <td className="text-center">{String.fromCharCode(97 + i)})</td>
-                              <td dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} />
-                              <td className="text-center">[{String(q.marks).padStart(2, '0')}]</td>
-                              <td className="text-center">{q.co}</td>
-                              <td className="text-center">{q.btl}</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{i === 0 ? (mIdx*2 + 2) + '.' : ''}</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{String.fromCharCode(97 + i)})</td>
+                              <td className="q-text text-left" dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} style={{ border: '1px solid black', padding: '5px' }} />
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{q.co}</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{q.btl}</td>
                             </tr>
                           ))}
                         </React.Fragment>

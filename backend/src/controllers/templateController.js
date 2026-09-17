@@ -2,9 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { admin, db } = require('../config/firebaseAdmin');
-const { GoogleGenAI } = require('@google/genai');
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const aiKeyManager = require('../services/aiKeyManager');
 
 const extractTemplate = async (req, res) => {
   try {
@@ -36,30 +34,38 @@ const extractTemplate = async (req, res) => {
     fs.writeFileSync(tempPath, fileBuffer);
 
     try {
-      const uploadedFile = await ai.files.upload({
-        file: tempPath,
-        mimeType: req.file.mimetype,
+      const uploadedFile = await aiKeyManager.executeWithAI(async (ai) => {
+        return await ai.files.upload({
+          file: tempPath,
+          config: { mimeType: req.file.mimetype || 'application/pdf' },
+        });
       });
 
       const prompt = `You are an expert document parser. Analyze this academic question paper template.
 Extract the following information and return ONLY a valid JSON object:
 - headerLogoUrl: Describe the logo or extract a URL if possible, otherwise leave empty string.
 - institutionName: The name of the college or university from the header.
+- subtitle: Any subtext under the institution (e.g. "(An Autonomous institute under...)")
+- defaultInstructions: Extract the array of general instructions given to the students.
 - watermarkText: Any background watermark text (like 'CONFIDENTIAL') or footer text.
 - fontFamily: Best guess of the primary font family used (e.g., 'Times New Roman', 'Arial').
 
 Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON object.`;
 
-      const geminiResponse = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
-        contents: [
-          { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
-          prompt
-        ]
+      const geminiResponse = await aiKeyManager.executeWithAI(async (ai) => {
+        return await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [
+            { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
+            prompt
+          ]
+        });
       });
 
       // Cleanup
-      await ai.files.delete({ name: uploadedFile.name });
+      await aiKeyManager.executeWithAI(async (ai) => {
+        return await ai.files.delete({ name: uploadedFile.name });
+      });
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
 
       let resultText = geminiResponse.text.replace(/^```json/im, '').replace(/```$/im, '').trim();
@@ -71,6 +77,8 @@ Do not include any code block ticks like \`\`\`json around the output, just outp
       extractedData = {
         headerLogoUrl: '',
         institutionName: 'Unknown Institution',
+        subtitle: '',
+        defaultInstructions: [],
         watermarkText: 'CONFIDENTIAL',
         fontFamily: 'Times New Roman'
       };
@@ -81,6 +89,8 @@ Do not include any code block ticks like \`\`\`json around the output, just outp
       isActive: true,
       headerLogoUrl: extractedData.headerLogoUrl || '',
       institutionName: extractedData.institutionName || 'Unknown Institution',
+      subtitle: extractedData.subtitle || '',
+      defaultInstructions: extractedData.defaultInstructions || [],
       watermarkText: extractedData.watermarkText || '',
       fontFamily: extractedData.fontFamily || 'Times New Roman',
       sampleFileUrl: publicUrl,

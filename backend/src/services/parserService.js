@@ -6,16 +6,13 @@ const xlsx = require('xlsx');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse'); // Fallback if needed
 const axios = require('axios');
-const { inferTags, checkImageSanity } = require('./aiService');
+const { inferTags } = require('./aiService');
 const crypto = require('crypto');
 // const { admin } = require('../config/firebaseAdmin'); // Removed: using Supabase Storage now
 const TurndownService = require('turndown');
 const turndownPluginGfm = require('turndown-plugin-gfm');
 const supabase = require('../config/supabaseClient');
-const { GoogleGenAI } = require('@google/genai');
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
+const aiKeyManager = require('./aiKeyManager');
 const ensureBucket = async (bucketName) => {
   try {
     const { data, error } = await supabase.storage.getBucket(bucketName);
@@ -100,12 +97,6 @@ const parseDOCX = async (url, tenantId) => {
         // Hash the buffer
         const hash = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
         
-        // Check image sanity
-        const isSane = await checkImageSanity(imageBase64, image.contentType);
-        if (!isSane) {
-          return { src: "" };
-        }
-        
         // Upload to Supabase Storage
         await ensureBucket('images');
         await supabase.storage.from('images').upload(`${tenantId}/${hash}.${ext}`, binaryBuffer, {
@@ -125,24 +116,43 @@ const parseDOCX = async (url, tenantId) => {
   
   const turndownService = new TurndownService({ headingStyle: 'atx' });
   turndownService.use(turndownPluginGfm.gfm);
-  const markdown = turndownService.turndown(result.value);
+  let markdown = turndownService.turndown(result.value);
+  
+  // Replace images with placeholders to prevent Gemini from stripping them or their URLs
+  const imageMap = {};
+  let imageCounter = 0;
+  markdown = markdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+    const placeholder = `__IMAGE_PLACEHOLDER_${imageCounter}__`;
+    imageMap[placeholder] = match;
+    imageCounter++;
+    return placeholder;
+  });
   
   try {
     const prompt = `You are an expert exam parser. Extract all questions from this document text. 
 Return ONLY a valid JSON array of objects with the following schema:
-[{ "questionText": "Question text preserving any Markdown formatting for tables", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
+[{ "questionText": "Question text preserving any Markdown formatting for tables and images", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
+CRITICAL: If the document contains any image placeholders like __IMAGE_PLACEHOLDER_0__, you MUST preserve them exactly as they are in the 'questionText'. Do not strip them out!
 CRITICAL: If a question contains a table followed by sub-questions (e.g., "1) What is...", "2) Determine..."), make sure the sub-questions are placed OUTSIDE and BELOW the markdown table, NOT inside the table rows!
 Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.
 
 DOCUMENT TEXT:
 ${markdown}`;
 
-    const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
-      contents: prompt
+    const geminiResponse = await aiKeyManager.executeWithAI(async (ai) => {
+      return await ai.models.generateContent({
+        model: 'gemini-flash-latest',
+        contents: prompt
+      });
     });
 
     let resultText = geminiResponse.text.replace(/^```json/im, '').replace(/```$/im, '').trim();
+    
+    // Restore image placeholders
+    for (const [placeholder, originalImage] of Object.entries(imageMap)) {
+      resultText = resultText.split(placeholder).join(originalImage);
+    }
+
     const parsedJson = JSON.parse(resultText);
     
     return parsedJson.map(q => ({
@@ -167,28 +177,35 @@ const parsePDF = async (url) => {
   fs.writeFileSync(tempPath, dataBuffer);
   
   try {
-    const uploadedFile = await ai.files.upload({
-      file: tempPath,
-      mimeType: 'application/pdf',
+    const uploadedFile = await aiKeyManager.executeWithAI(async (ai) => {
+      return await ai.files.upload({
+        file: tempPath,
+        mimeType: 'application/pdf',
+      });
     });
 
     const prompt = `You are an expert exam parser. Extract all questions from this document. 
 Return ONLY a valid JSON array of objects with the following schema:
-[{ "questionText": "Question text preserving any Markdown formatting for tables", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
+[{ "questionText": "Question text preserving any Markdown formatting for tables and images", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
 For tables, use standard markdown table syntax inside the questionText. 
+CRITICAL: If the document contains any markdown image tags like ![image](url), you MUST preserve them exactly as they are in the 'questionText'. Do not strip them out!
 CRITICAL: If a question contains a table followed by sub-questions (e.g., "1) What is...", "2) Determine..."), make sure the sub-questions are placed OUTSIDE and BELOW the markdown table, NOT inside the table rows!
 Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.`;
 
-    const geminiResponse = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
-      contents: [
-        { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
-        prompt
-      ]
+    const geminiResponse = await aiKeyManager.executeWithAI(async (ai) => {
+      return await ai.models.generateContent({
+        model: 'gemini-flash-latest',
+        contents: [
+          { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
+          prompt
+        ]
+      });
     });
 
     // Cleanup
-    await ai.files.delete({ name: uploadedFile.name });
+    await aiKeyManager.executeWithAI(async (ai) => {
+      return await ai.files.delete({ name: uploadedFile.name });
+    });
     if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
 
     let resultText = geminiResponse.text.replace(/^```json/im, '').replace(/```$/im, '').trim();

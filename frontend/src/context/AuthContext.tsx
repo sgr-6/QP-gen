@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 
@@ -55,7 +55,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     router.push("/");
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
     } catch (e) {
@@ -65,7 +65,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setCurrentUser(null);
       router.push("/login");
     }
-  };
+  }, [router]);
+
+  // Auto-logout after 1 hour of inactivity
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      if (currentUser) {
+        timeoutId = setTimeout(() => {
+          logout();
+        }, 60 * 60 * 1000); // 1 hour
+      }
+    };
+
+    const events = ['mousemove', 'keydown', 'scroll', 'click'];
+
+    if (currentUser) {
+      resetTimer();
+      events.forEach(e => window.addEventListener(e, resetTimer));
+    }
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach(e => window.removeEventListener(e, resetTimer));
+    };
+  }, [currentUser, logout]);
 
   const hasRole = (...roles: string[]) => {
     if (!currentUser) return false;

@@ -322,10 +322,18 @@ body {
   margin-bottom: 20px;
 }
 
-table {
+.table-wrapper > table {
   width: 100%;
   border-collapse: collapse;
   min-width: 600px;
+}
+
+.q-text table {
+  min-width: unset;
+  table-layout: auto;
+  word-wrap: break-word;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 th, td {
