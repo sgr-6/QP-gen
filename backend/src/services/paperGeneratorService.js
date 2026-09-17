@@ -7,7 +7,7 @@ const aiKeyManager = require('./aiKeyManager');
  * AI-Powered Paper Generation Algorithm
  * Fetches Syllabus, Notes, and Question Bank to intelligently generate a paper matching constraints.
  */
-const generatePaper = async (courseTitle, examType = 'semester', examConfig = null, tenantId) => {
+const generatePaper = async (courseTitle, examType = 'semester', examConfig = null, tenantId, formatSelection = 'sjb', customFormatInstructions = '') => {
   if (!tenantId) {
     throw new Error('Tenant ID is required for generation');
   }
@@ -61,6 +61,13 @@ RULES:
 7. BTL must be one of: L1, L2, L3, L4, L5, L6. CO must be one of: CO1, CO2, CO3, CO4, CO5.
 8. Output strictly a JSON object matching this schema exactly, with NO markdown code blocks.
 9. Also infer metadata for the paper header based on the syllabus or general academic context. Extract the "semester" (e.g., "First", "Second", "Third", etc.), the "examTitle" (e.g., "B.E. Degree Semester End Examination (SEE)"), and the "date" (e.g., "July 2024") into separate fields so they can be edited independently. Use generic placeholder dates if none are found.
+10. You must analyze your generated paper and provide a summary of any CO/BTL deviation errors, any buffer marks you applied to reach the exact section totals, and rate the toughness of each section (from 1 to 10) in the "analysis" object.
+
+FORMAT SPECIFIC INSTRUCTIONS:
+${formatSelection === 'sjb' ? `You are generating a paper for SJB Institute of Technology (Autonomous). Do NOT mention VTU in the headers or instructions.` : ''}
+${formatSelection === 'standard' ? `You are generating a standard VTU format paper.` : ''}
+${formatSelection === 'custom' && customFormatInstructions ? `Follow these custom format instructions precisely: ${customFormatInstructions}` : ''}
+
 
 CRITICAL INSTRUCTION FOR IMAGES AND FORMATTING:
 To prevent loss of images, graphs, and formatting, you MUST return the 'id' of the question from the Question Bank and set 'isNew': false. Do NOT include 'questionText' if 'isNew' is false.
@@ -73,7 +80,7 @@ SCHEMA:
   "totalMarks": ${isInternal ? 50 : 100},
   "warnings": ["List any rules you had to break, if any"],
   "headerMetadata": {
-    "institution": "Visvesvaraya Technological University, Belagavi",
+    "institution": "${formatSelection === 'sjb' ? 'SJB Institute of Technology (Autonomous)' : 'Visvesvaraya Technological University, Belagavi'}",
     "examTitle": "B.E. Degree Semester End Examination (SEE)",
     "semester": "First",
     "subjectCode": "23MAT11A",
@@ -93,7 +100,16 @@ SCHEMA:
         { "id": "q_5", "isNew": false, "marks": 20, "btl": "L3", "co": "CO2" }
       ]
     }
-  ]
+  ],
+  "analysis": {
+    "coBtlErrors": ["List any errors or deviations from required CO/BTL levels"],
+    "bufferMarksUsed": ["List any mark adjustments made to questions to meet section totals exactly"],
+    "toughness": {
+      "M1": "7/10",
+      "M2": "6/10"
+    },
+    "overallToughness": "6.5/10"
+  }
 }
 
 INPUT DATA:
@@ -171,6 +187,8 @@ Notes: ${JSON.stringify(notes)}
     });
   }
 
+  // Attach format metadata to paper so pdfService can use it
+  paper.formatSelection = formatSelection;
   return paper;
 };
 

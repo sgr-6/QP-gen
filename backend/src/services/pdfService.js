@@ -208,6 +208,203 @@ const generatePaperHTML = (paper, template, downloaderIdentity = '') => {
   return html;
 };
 
+const generateSJBHTML = (paper, template, downloaderIdentity = '') => {
+  const fontFamily = template?.fontFamily || '"Times New Roman", Times, serif';
+  
+  let html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <style>
+      body {
+        font-family: ${fontFamily};
+        font-size: 11pt;
+        margin: 0;
+        padding: 0;
+        position: relative;
+        line-height: 1.3;
+      }
+      .header-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10px;
+      }
+      .header-table td {
+        border: none;
+        padding: 2px;
+      }
+      .content-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      .content-table th, .content-table td {
+        border: 1px solid black;
+        padding: 5px;
+        text-align: center;
+        vertical-align: middle;
+      }
+      .q-text {
+        text-align: left !important;
+        padding: 5px 10px;
+      }
+      .q-text img {
+        max-width: 100%;
+        max-height: 250px;
+        object-fit: contain;
+        display: block;
+        margin: 10px auto;
+      }
+      .usn-box {
+        display: inline-block;
+        width: 20px;
+        height: 25px;
+        border: 1px solid black;
+        margin-left: 2px;
+      }
+      .usn-container {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+      }
+    </style>
+  </head>
+  <body>
+    <table class="header-table">
+      <tr>
+        <td style="width: 25%; text-align: left; vertical-align: top;">
+           <img src="https://barcode.tec-it.com/barcode.ashx?data=${paper.headerMetadata?.subjectCode || 'XX00XX'}&code=Code128&dpi=96" alt="Barcode" style="height: 40px;"/>
+        </td>
+        <td style="width: 50%; text-align: center;">
+          <div style="font-weight: bold; font-size: 14pt;">SJB Institute of Technology</div>
+          <div style="font-size: 10pt;">(An Autonomous institute under VTU, Belagavi, Karnataka, India)</div>
+        </td>
+        <td style="width: 25%; text-align: right; vertical-align: top;">
+          <div class="usn-container">
+            <span style="font-weight: bold; margin-right: 5px;">USN</span>
+            ${Array(10).fill('<div class="usn-box"></div>').join('')}
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3" style="text-align: center; font-weight: bold; font-size: 12pt; padding-top: 10px;">
+          ${paper.headerMetadata?.semester ? `${paper.headerMetadata.semester} Semester ` : ''}${paper.headerMetadata?.examTitle || 'Semester End Examination'}${paper.headerMetadata?.date ? `, ${paper.headerMetadata.date}` : ''}
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3" style="text-align: center; font-weight: bold; font-size: 14pt; padding: 5px;">
+          ${paper.courseTitle || 'COURSE TITLE'}
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3">
+          <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px;">
+            <div>Time: ${paper.headerMetadata?.duration || '3 Hours'}</div>
+            <div>QP Code: ${paper.headerMetadata?.qpCode || '______'}</div>
+            <div>Max Marks: ${paper.headerMetadata?.marks || paper.totalMarks || 100}</div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding-top: 10px;">
+          <div style="font-weight: bold; text-decoration: underline; margin-bottom: 5px;">Instructions to students:</div>
+          <ol style="margin-top: 0; padding-left: 20px;">
+            ${(template?.defaultInstructions && template.defaultInstructions.length > 0 ? template.defaultInstructions : paper.headerMetadata?.instructions || [
+              'Answer FIVE FULL Questions, choosing ONE full question from each module.',
+              'Use BLACK ball point pen for text, figure, table, etc.',
+              'Assume missing data, if any.'
+            ]).map(inst => `<li>${inst}</li>`).join('')}
+          </ol>
+        </td>
+      </tr>
+    </table>
+    
+    <table class="content-table">
+      <colgroup>
+        <col style="width: 6%" />
+        <col style="width: 4%" />
+        <col style="width: 60%" />
+        <col style="width: 10%" />
+        <col style="width: 10%" />
+        <col style="width: 10%" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th colspan="3">Questions</th>
+          <th>Marks</th>
+          <th>CO</th>
+          <th>RBT Level</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  let qNumber = 1;
+
+  if (paper.modules) {
+    paper.modules.forEach((mod, idx) => {
+      const headerText = paper.examType === 'internal' ? `Part ${idx + 1}` : `Module-${String(mod.moduleNumber).replace('M', '')}`;
+      html += `
+        <tr>
+          <td colspan="6" style="text-align: center; font-weight: bold; background-color: #f2f2f2;">${headerText}</td>
+        </tr>
+      `;
+
+      // Split A
+      const splitA = mod.splitA || [];
+      splitA.forEach((q, i) => {
+        const subLetter = String.fromCharCode(97 + i); // a, b, c...
+        html += `
+          <tr>
+            <td style="font-weight: bold;">${i === 0 ? 'Q' + qNumber + '.' : ''}</td>
+            <td style="font-weight: bold;">${subLetter})</td>
+            <td class="q-text">${q.htmlText || q.questionText || ''}</td>
+            <td>${q.marks}</td>
+            <td>${q.co || '-'}</td>
+            <td>${q.btl || '-'}</td>
+          </tr>
+        `;
+      });
+
+      html += `
+        <tr>
+          <td colspan="6" style="text-align: center; font-weight: bold;">OR</td>
+        </tr>
+      `;
+
+      qNumber++;
+
+      // Split B
+      const splitB = mod.splitB || [];
+      splitB.forEach((q, i) => {
+        const subLetter = String.fromCharCode(97 + i);
+        html += `
+          <tr>
+            <td style="font-weight: bold;">${i === 0 ? 'Q' + qNumber + '.' : ''}</td>
+            <td style="font-weight: bold;">${subLetter})</td>
+            <td class="q-text">${q.htmlText || q.questionText || ''}</td>
+            <td>${q.marks}</td>
+            <td>${q.co || '-'}</td>
+            <td>${q.btl || '-'}</td>
+          </tr>
+        `;
+      });
+
+      qNumber++;
+    });
+  }
+
+  html += `
+      </tbody>
+    </table>
+    <p style="text-align:center; margin-top: 20px; font-weight: bold;">*** END OF PAPER ***</p>
+  </body>
+  </html>
+  `;
+
+  return html;
+};
+
 const generatePDFBuffer = async (paper, tenantId, downloaderIdentity = '') => {
   let template = null;
   if (tenantId) {
@@ -221,7 +418,12 @@ const generatePDFBuffer = async (paper, tenantId, downloaderIdentity = '') => {
     }
   }
 
-  const html = generatePaperHTML(paper, template, downloaderIdentity);
+  let html;
+  if (paper.formatSelection === 'sjb') {
+    html = generateSJBHTML(paper, template, downloaderIdentity);
+  } else {
+    html = generatePaperHTML(paper, template, downloaderIdentity);
+  }
   
   const launchOptions = {
     headless: "new",
@@ -235,7 +437,7 @@ const generatePDFBuffer = async (paper, tenantId, downloaderIdentity = '') => {
   const browser = await puppeteer.launch(launchOptions);
   
   const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: 'networkidle0' });
+  await page.setContent(html, { waitUntil: ['load', 'networkidle2'], timeout: 60000 });
   
   const pdfBuffer = await page.pdf({
     format: 'A4',

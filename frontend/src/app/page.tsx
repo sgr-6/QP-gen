@@ -11,7 +11,7 @@ import { ExamType, EXAM_CONFIGS } from '@/lib/types';
 
 export default function ExamDashboard() {
   const { currentUser, loading, logout, hasRole } = useAuth();
-  const [activeTab, setActiveTab] = useState('analytics');
+  const [activeTab, setActiveTab] = useState('generate');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Set default tab based on role
@@ -22,7 +22,7 @@ export default function ExamDashboard() {
       } else if (hasRole('professor')) {
         setActiveTab('generate');
       } else {
-        setActiveTab('analytics');
+        setActiveTab('generate');
       }
     }
   }, [currentUser, hasRole]);
@@ -43,6 +43,10 @@ export default function ExamDashboard() {
   const [draftPaper, setDraftPaper] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedExamType, setSelectedExamType] = useState<ExamType | null>(null);
+  
+  // Format Selection State
+  const [formatSelection, setFormatSelection] = useState<'sjb' | 'standard' | 'custom'>('sjb');
+  const [customFormatInstructions, setCustomFormatInstructions] = useState('');
 
   // Template Management State
   const [templateFile, setTemplateFile] = useState<File | null>(null);
@@ -249,7 +253,9 @@ export default function ExamDashboard() {
         { 
           courseTitle: generateTitle,
           examType: selectedExamType,
-          examConfig: selectedExamType ? EXAM_CONFIGS[selectedExamType] : null
+          examConfig: selectedExamType ? EXAM_CONFIGS[selectedExamType] : null,
+          formatSelection,
+          customFormatInstructions
         }
       );
       
@@ -445,12 +451,6 @@ export default function ExamDashboard() {
             </button>
           )}
           
-          <button 
-            onClick={() => { setActiveTab('analytics'); setIsSidebarOpen(false); }}
-            className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
-          >
-            <BarChart3 size={18} /> Analytics
-          </button>
         </nav>
         <div style={{ flex: 1 }}></div>
         <div className="nav-menu">
@@ -642,10 +642,38 @@ export default function ExamDashboard() {
                 onSelect={setSelectedExamType} 
               />
 
-              {/* Template Upload Block */}
+              {/* Format Configuration Block */}
               <div className="card" style={{ marginTop: '24px', marginBottom: '24px', background: '#F8F9FA' }}>
-                <h4 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>Format Configuration (Optional)</h4>
-                <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '16px' }}>Upload a previous Question Paper PDF to automatically extract your institution's specific formatting.</p>
+                <h4 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>Format Configuration</h4>
+                <div style={{ marginBottom: '16px' }}>
+                  <label className="input-label">Select Paper Format</label>
+                  <select 
+                    value={formatSelection} 
+                    onChange={(e) => setFormatSelection(e.target.value as 'sjb' | 'standard' | 'custom')}
+                    className="pill-input"
+                    style={{ padding: '12px 16px', width: '100%', appearance: 'auto', marginBottom: formatSelection === 'custom' ? '16px' : '0' }}
+                  >
+                    <option value="sjb">SJB Autonomous (Default)</option>
+                    <option value="standard">Standard VTU Format</option>
+                    <option value="custom">Custom Format</option>
+                  </select>
+                </div>
+                {formatSelection === 'custom' && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label className="input-label">Custom Format Instructions</label>
+                    <textarea 
+                      className="pill-input"
+                      placeholder="E.g., Include a 10-mark mandatory question at the start. Create 3 modules instead of 5..."
+                      value={customFormatInstructions}
+                      onChange={(e) => setCustomFormatInstructions(e.target.value)}
+                      rows={4}
+                      style={{ width: '100%', resize: 'vertical' }}
+                    />
+                  </div>
+                )}
+                
+                <h4 style={{ fontSize: '16px', fontWeight: 600, marginTop: '24px', marginBottom: '16px' }}>Extract Format from File (Optional)</h4>
+                <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '16px' }}>Upload a previous Question Paper PDF to extract format.</p>
                 <form onSubmit={handleTemplateUpload} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
                   <div style={{ flex: 1 }}>
                     <input 
@@ -960,6 +988,49 @@ export default function ExamDashboard() {
                   </table>
                   </div>
                   <div className="text-center" style={{ fontWeight: 700, fontSize: '20px', marginTop: '32px' }}>*********</div>
+                  
+                  {/* Analysis Summary */}
+                  {draftPaper.analysis && (
+                    <div className="card" style={{ marginTop: '32px', background: '#FFFDF0', border: '1px solid #F6E05E' }}>
+                      <h4 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: '#975A16' }}>AI Paper Analysis & Summary</h4>
+                      
+                      {draftPaper.analysis.coBtlErrors && draftPaper.analysis.coBtlErrors.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 'bold', color: '#C53030' }}>CO/BTL Errors or Constraints Broken:</span>
+                          <ul style={{ margin: '4px 0 0 20px', color: '#E53E3E', fontSize: '14px' }}>
+                            {draftPaper.analysis.coBtlErrors.map((err: string, idx: number) => <li key={idx}>{err}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {draftPaper.analysis.bufferMarksUsed && draftPaper.analysis.bufferMarksUsed.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 'bold', color: '#DD6B20' }}>Buffer Marks / Adjustments Applied:</span>
+                          <ul style={{ margin: '4px 0 0 20px', color: '#DD6B20', fontSize: '14px' }}>
+                            {draftPaper.analysis.bufferMarksUsed.map((buf: string, idx: number) => <li key={idx}>{buf}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {draftPaper.analysis.toughness && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 'bold', color: '#2B6CB0' }}>Section Toughness Ratings:</span>
+                          <ul style={{ margin: '4px 0 0 20px', color: '#2B6CB0', fontSize: '14px' }}>
+                            {Object.entries(draftPaper.analysis.toughness).map(([sec, val], idx) => (
+                              <li key={idx}><strong>{sec}:</strong> {String(val)}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {draftPaper.analysis.overallToughness && (
+                        <div style={{ color: '#2C5282', fontSize: '14px' }}>
+                          <span style={{ fontWeight: 'bold' }}>Overall Toughness:</span> {draftPaper.analysis.overallToughness}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                 </div>
               )}
             </div>
@@ -1068,6 +1139,49 @@ export default function ExamDashboard() {
                     </tbody>
                   </table>
                   </div>
+
+                  {/* Analysis Summary for Reviewer */}
+                  {selectedDraft.paper?.analysis && (
+                    <div className="card print-hidden" style={{ marginTop: '32px', background: '#FFFDF0', border: '1px solid #F6E05E' }}>
+                      <h4 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: '#975A16' }}>AI Paper Analysis & Summary</h4>
+                      
+                      {selectedDraft.paper.analysis.coBtlErrors && selectedDraft.paper.analysis.coBtlErrors.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 'bold', color: '#C53030' }}>CO/BTL Errors or Constraints Broken:</span>
+                          <ul style={{ margin: '4px 0 0 20px', color: '#E53E3E', fontSize: '14px' }}>
+                            {selectedDraft.paper.analysis.coBtlErrors.map((err: string, idx: number) => <li key={idx}>{err}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {selectedDraft.paper.analysis.bufferMarksUsed && selectedDraft.paper.analysis.bufferMarksUsed.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 'bold', color: '#DD6B20' }}>Buffer Marks / Adjustments Applied:</span>
+                          <ul style={{ margin: '4px 0 0 20px', color: '#DD6B20', fontSize: '14px' }}>
+                            {selectedDraft.paper.analysis.bufferMarksUsed.map((buf: string, idx: number) => <li key={idx}>{buf}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {selectedDraft.paper.analysis.toughness && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 'bold', color: '#2B6CB0' }}>Section Toughness Ratings:</span>
+                          <ul style={{ margin: '4px 0 0 20px', color: '#2B6CB0', fontSize: '14px' }}>
+                            {Object.entries(selectedDraft.paper.analysis.toughness).map(([sec, val], idx) => (
+                              <li key={idx}><strong>{sec}:</strong> {String(val)}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {selectedDraft.paper.analysis.overallToughness && (
+                        <div style={{ color: '#2C5282', fontSize: '14px' }}>
+                          <span style={{ fontWeight: 'bold' }}>Overall Toughness:</span> {selectedDraft.paper.analysis.overallToughness}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                 </div>
               )}
             </div>
@@ -1196,30 +1310,7 @@ export default function ExamDashboard() {
             </div>
           )}
 
-          {/* ANALYTICS TAB */}
-          {activeTab === 'analytics' && (
-            <div className="animate-in">
-              <div style={{ marginBottom: '32px' }}>
-                <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>NBA / ABET Compliance</h3>
-                <p style={{ color: 'var(--text-muted)' }}>Live visualization of Bloom's Taxonomy and Course Outcome distributions across generated drafts.</p>
-              </div>
-              
-              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                <div className="card" style={{ flex: '1 1 300px', height: '320px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                   <div style={{ background: 'var(--primary-light)', padding: '24px', borderRadius: '50%', marginBottom: '20px' }}>
-                     <BarChart3 size={40} color="var(--primary-purple)" style={{ opacity: 0.5 }} />
-                   </div>
-                   <p style={{ color: 'var(--text-muted)', fontWeight: 500 }}>BTL Distribution Chart Loading...</p>
-                </div>
-                <div className="card" style={{ flex: '1 1 300px', height: '320px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                   <div style={{ background: 'var(--primary-light)', padding: '24px', borderRadius: '50%', marginBottom: '20px' }}>
-                     <BarChart3 size={40} color="var(--primary-purple)" style={{ opacity: 0.5 }} />
-                   </div>
-                   <p style={{ color: 'var(--text-muted)', fontWeight: 500 }}>CO Distribution Chart Loading...</p>
-                </div>
-              </div>
-            </div>
-          )}
+
 
         </div>
       </main>

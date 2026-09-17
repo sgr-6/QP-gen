@@ -7,13 +7,13 @@ const { encryptData, decryptData, generateSHA256Hash } = require('../utils/crypt
 
 const generateDraft = async (req, res) => {
   try {
-    const { courseTitle, examType, examConfig } = req.body;
+    const { courseTitle, examType, examConfig, formatSelection, customFormatInstructions } = req.body;
     if (!courseTitle) {
       return res.status(400).json({ error: 'Course Title is required' });
     }
     const tenantId = req.user.tenantId;
 
-    const paper = await generatePaper(courseTitle, examType, examConfig, tenantId);
+    const paper = await generatePaper(courseTitle, examType, examConfig, tenantId, formatSelection, customFormatInstructions);
     
     res.json({
       message: 'Draft generated successfully!',
