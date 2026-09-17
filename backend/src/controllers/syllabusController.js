@@ -58,7 +58,7 @@ Do not include any code block ticks like \`\`\`json around the output, just outp
 
     const response = await aiKeyManager.executeWithAI(async (ai) => {
       return await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash-lite',
         contents: [
           { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
           prompt
