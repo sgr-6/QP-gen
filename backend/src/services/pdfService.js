@@ -221,11 +221,16 @@ const generatePDFBuffer = async (paper, tenantId, downloaderIdentity = '') => {
 
   const html = generatePaperHTML(paper, template, downloaderIdentity);
   
-  const browser = await puppeteer.launch({
+  const launchOptions = {
     headless: "new",
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
+  };
+  
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  
+  const browser = await puppeteer.launch(launchOptions);
   
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: 'networkidle0' });
