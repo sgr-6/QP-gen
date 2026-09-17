@@ -68,7 +68,7 @@ export default function LoginPage() {
       console.error("OTP Verify Error:", err);
       const errorMessage = err.response?.data?.error || "";
       if (err.response?.status === 403 && errorMessage.toLowerCase().includes("locked")) {
-        setError("Account locked due to suspicious activity. Please contact your tenant administrator to unlock.");
+        setError("Account locked due to suspicious activity. Please contact your administrator to unlock.");
       } else {
         setError(errorMessage || "Invalid OTP. Please try again.");
       }

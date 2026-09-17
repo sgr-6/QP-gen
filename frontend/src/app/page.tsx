@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle, Printer, ShieldCheck, ClipboardCheck, MessageSquare, Calendar, Clock, Edit3, Send } from 'lucide-react';
+import { UploadCloud, FileText, BarChart3, Settings, LogOut, CheckCircle, AlertCircle, Printer, ShieldCheck, ClipboardCheck, MessageSquare, Calendar, Clock, Edit3, Send, Menu, X } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import { ExamType, EXAM_CONFIGS } from '@/lib/types';
 export default function ExamDashboard() {
   const { currentUser, loading, logout, hasRole } = useAuth();
   const [activeTab, setActiveTab] = useState('analytics');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Set default tab based on role
   useEffect(() => {
@@ -20,8 +21,6 @@ export default function ExamDashboard() {
         setActiveTab('upload');
       } else if (hasRole('professor')) {
         setActiveTab('generate');
-      } else if (hasRole('controller_of_exams')) {
-        setActiveTab('review');
       } else {
         setActiveTab('analytics');
       }
@@ -393,15 +392,26 @@ export default function ExamDashboard() {
 
   return (
     <div className="app-container">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="sidebar-overlay"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          QP Gen
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="sidebar-logo">QP Gen</div>
+          <button className="close-sidebar-btn" onClick={() => setIsSidebarOpen(false)}>
+            <X size={24} />
+          </button>
         </div>
         <nav className="nav-menu">
-          {hasRole('hod') && (
+          {hasRole('hod', 'professor') && (
             <button 
-              onClick={() => setActiveTab('upload')}
+              onClick={() => { setActiveTab('upload'); setIsSidebarOpen(false); }}
               className={`nav-item ${activeTab === 'upload' ? 'active' : ''}`}
             >
               <UploadCloud size={18} /> Data Ingestion
@@ -410,25 +420,25 @@ export default function ExamDashboard() {
           
           {hasRole('professor', 'hod') && (
             <button 
-              onClick={() => setActiveTab('generate')}
+              onClick={() => { setActiveTab('generate'); setIsSidebarOpen(false); }}
               className={`nav-item ${activeTab === 'generate' ? 'active' : ''}`}
             >
               <FileText size={18} /> Generate Draft
             </button>
           )}
 
-          {hasRole('hod', 'controller_of_exams') && (
+          {hasRole('hod') && (
             <button 
-              onClick={() => setActiveTab('review')}
+              onClick={() => { setActiveTab('review'); setIsSidebarOpen(false); }}
               className={`nav-item ${activeTab === 'review' ? 'active' : ''}`}
             >
               <ClipboardCheck size={18} /> Review Drafts
             </button>
           )}
 
-          {hasRole('controller_of_exams') && (
+          {hasRole('hod') && (
             <button 
-              onClick={() => setActiveTab('release')}
+              onClick={() => { setActiveTab('release'); setIsSidebarOpen(false); }}
               className={`nav-item ${activeTab === 'release' ? 'active' : ''}`}
             >
               <Clock size={18} /> Release Papers
@@ -436,7 +446,7 @@ export default function ExamDashboard() {
           )}
           
           <button 
-            onClick={() => setActiveTab('analytics')}
+            onClick={() => { setActiveTab('analytics'); setIsSidebarOpen(false); }}
             className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
           >
             <BarChart3 size={18} /> Analytics
@@ -452,6 +462,13 @@ export default function ExamDashboard() {
 
       {/* Main Content Area */}
       <main className="main-content">
+        {/* Mobile Top Bar */}
+        <div className="mobile-top-bar">
+          <button className="menu-btn" onClick={() => setIsSidebarOpen(true)}>
+            <Menu size={24} />
+          </button>
+          <div className="mobile-logo">QP Gen</div>
+        </div>
         
         {/* Top Header */}
         <header className="header">
@@ -1197,52 +1214,7 @@ export default function ExamDashboard() {
         </div>
       </main>
 
-      {/* Mobile Navigation Bar */}
-      <div className="mobile-nav">
-        {hasRole('early_access', 'professor', 'hod', 'controller_of_exams', 'tenant_admin') && (
-          <button 
-            onClick={() => setActiveTab('upload')}
-            className={`mobile-nav-btn ${activeTab === 'upload' ? 'active' : ''}`}
-          >
-            <UploadCloud size={18} />
-            <span>Ingest</span>
-          </button>
-        )}
-        {hasRole('early_access', 'professor', 'hod', 'controller_of_exams') && (
-          <button 
-            onClick={() => setActiveTab('generate')}
-            className={`mobile-nav-btn ${activeTab === 'generate' ? 'active' : ''}`}
-          >
-            <FileText size={18} />
-            <span>Draft</span>
-          </button>
-        )}
-        {hasRole('hod', 'controller_of_exams') && (
-          <button 
-            onClick={() => setActiveTab('review')}
-            className={`mobile-nav-btn ${activeTab === 'review' ? 'active' : ''}`}
-          >
-            <ClipboardCheck size={18} />
-            <span>Review</span>
-          </button>
-        )}
-        <button 
-          onClick={() => setActiveTab('analytics')}
-          className={`mobile-nav-btn ${activeTab === 'analytics' ? 'active' : ''}`}
-        >
-          <BarChart3 size={18} />
-          <span>Analytics</span>
-        </button>
-        {hasRole('tenant_admin', 'super_admin') && (
-          <button 
-            onClick={() => setActiveTab('admin')}
-            className={`mobile-nav-btn ${activeTab === 'admin' ? 'active' : ''}`}
-          >
-            <Settings size={18} />
-            <span>Admin</span>
-          </button>
-        )}
-      </div>
+
     </div>
   );
 }

@@ -6,7 +6,7 @@ import api from "@/lib/api";
 
 export interface User {
   email: string;
-  role: 'professor' | 'hod' | 'controller_of_exams' | 'print_admin' | 'tenant_admin' | 'super_admin' | 'early_access';
+  role: 'professor' | 'hod';
   tenantId?: string;
   token?: string;
 }
@@ -35,18 +35,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
 
   useEffect(() => {
-    // Check local storage on initial load
-    const storedUser = localStorage.getItem("qpgen_user");
-    if (storedUser) {
+    const verifySession = async () => {
       try {
-        const user = JSON.parse(storedUser) as User;
-        setCurrentUser(user);
+        const storedUser = localStorage.getItem("qpgen_user");
+        if (storedUser) {
+          // Attempt to verify with the backend
+          const res = await api.get('/auth/me');
+          if (res.data && res.data.user) {
+            // Keep the user state in sync with the backend
+            setCurrentUser(res.data.user);
+            localStorage.setItem("qpgen_user", JSON.stringify(res.data.user));
+          } else {
+            throw new Error('Invalid session');
+          }
+        }
       } catch (e) {
-        console.error("Failed to parse user from local storage", e);
+        console.error("Session verification failed", e);
         localStorage.removeItem("qpgen_user");
+        setCurrentUser(null);
+      } finally {
+        setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+
+    verifySession();
   }, []);
 
   const login = (user: User) => {
