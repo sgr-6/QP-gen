@@ -437,7 +437,11 @@ const generatePDFBuffer = async (paper, tenantId, downloaderIdentity = '') => {
   const browser = await puppeteer.launch(launchOptions);
   
   const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: ['load', 'networkidle2'], timeout: 60000 });
+  try {
+    await page.setContent(html, { waitUntil: ['load', 'networkidle0'], timeout: 15000 });
+  } catch (e) {
+    console.warn("PDF setContent timed out (likely due to slow external images). Generating PDF with loaded content.");
+  }
   
   const pdfBuffer = await page.pdf({
     format: 'A4',
