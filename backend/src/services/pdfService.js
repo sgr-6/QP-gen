@@ -60,8 +60,10 @@ const generatePaperHTML = (paper, template, downloaderIdentity = '') => {
       }
       .q-text img {
         max-width: 100%;
-        max-height: 300px;
+        max-height: 250px;
         object-fit: contain;
+        display: block;
+        margin: 10px auto;
       }
     </style>
   </head>
@@ -85,7 +87,7 @@ const generatePaperHTML = (paper, template, downloaderIdentity = '') => {
       <tr>
         <td style="text-align: center; font-weight: bold; font-size: 12pt; padding: 5px;">
           ${paper.headerMetadata?.institution || 'Unknown Institution'}<br/>
-          ${paper.headerMetadata?.examTitle || 'Semester End Examination'}
+          ${paper.headerMetadata?.semester ? `${paper.headerMetadata.semester} Semester ` : ''}${paper.headerMetadata?.examTitle || 'Semester End Examination'}${paper.headerMetadata?.date ? `, ${paper.headerMetadata.date}` : ''}
         </td>
       </tr>
       <tr>
@@ -160,7 +162,7 @@ const generatePaperHTML = (paper, template, downloaderIdentity = '') => {
           <td style="font-weight: bold;">${i === 0 ? qNumber + '.' : ''}</td>
           <td style="font-weight: bold;">${subLetter})</td>
           <td class="q-text">${q.htmlText || q.questionText || ''}</td>
-          <td style="font-weight: bold;">[${String(q.marks).padStart(2, '0')}]</td>
+          <td style="font-weight: bold;">${String(q.marks).padStart(2, '0')}</td>
           <td style="font-weight: bold;">${q.co || '-'}</td>
           <td style="font-weight: bold;">${q.btl || '-'}</td>
         </tr>
@@ -185,7 +187,7 @@ const generatePaperHTML = (paper, template, downloaderIdentity = '') => {
           <td style="font-weight: bold;">${i === 0 ? qNumber + '.' : ''}</td>
           <td style="font-weight: bold;">${subLetter})</td>
           <td class="q-text">${q.htmlText || q.questionText || ''}</td>
-          <td style="font-weight: bold;">[${String(q.marks).padStart(2, '0')}]</td>
+          <td style="font-weight: bold;">${String(q.marks).padStart(2, '0')}</td>
           <td style="font-weight: bold;">${q.co || '-'}</td>
           <td style="font-weight: bold;">${q.btl || '-'}</td>
         </tr>

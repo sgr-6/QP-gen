@@ -830,6 +830,14 @@ export default function ExamDashboard() {
                         <label className="input-label">Max Marks</label>
                         <input type="text" className="pill-input" value={draftPaper.headerMetadata?.marks || ''} onChange={(e) => handleHeaderChange('marks', e.target.value)} />
                       </div>
+                      <div className="input-group">
+                        <label className="input-label">Date</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.date || ''} onChange={(e) => handleHeaderChange('date', e.target.value)} />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Semester</label>
+                        <input type="text" className="pill-input" value={draftPaper.headerMetadata?.semester || ''} onChange={(e) => handleHeaderChange('semester', e.target.value)} />
+                      </div>
                     </div>
                   </div>
                   
@@ -853,7 +861,9 @@ export default function ExamDashboard() {
                         <tr>
                           <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12pt', padding: '5px', border: '1px solid black' }}>
                             {draftPaper.headerMetadata?.institution || 'Unknown Institution'}<br/>
+                            {draftPaper.headerMetadata?.semester ? `${draftPaper.headerMetadata.semester} Semester ` : ''}
                             {draftPaper.headerMetadata?.examTitle || 'Semester End Examination'}
+                            {draftPaper.headerMetadata?.date ? `, ${draftPaper.headerMetadata.date}` : ''}
                           </td>
                         </tr>
                         <tr>
@@ -923,7 +933,7 @@ export default function ExamDashboard() {
                               <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{i === 0 ? (mIdx*2 + 1) + '.' : ''}</td>
                               <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{String.fromCharCode(97 + i)})</td>
                               <td className="q-text text-left" dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} style={{ border: '1px solid black', padding: '5px' }} />
-                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{String(q.marks).padStart(2, '0')}</td>
                               <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{q.co}</td>
                               <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{q.btl}</td>
                             </tr>
@@ -939,7 +949,7 @@ export default function ExamDashboard() {
                               <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{i === 0 ? (mIdx*2 + 2) + '.' : ''}</td>
                               <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{String.fromCharCode(97 + i)})</td>
                               <td className="q-text text-left" dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} style={{ border: '1px solid black', padding: '5px' }} />
-                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{String(q.marks).padStart(2, '0')}</td>
                               <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{q.co}</td>
                               <td className="text-center" style={{ border: '1px solid black', padding: '5px', fontWeight: 'bold' }}>{q.btl}</td>
                             </tr>
@@ -1030,8 +1040,8 @@ export default function ExamDashboard() {
                             <tr key={i}>
                               <td className="text-center">-</td>
                               <td className="text-center">-</td>
-                              <td dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText || '' }} />
-                              <td className="text-center">[{String(q.marks).padStart(2, '0')}]</td>
+                              <td className="q-text" dangerouslySetInnerHTML={{ __html: q.htmlText || q.questionText }} />
+                              <td style={{ fontWeight: 'bold' }}>{String(q.marks).padStart(2, '0')}</td>
                               <td className="text-center print-hidden">
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                   <input 

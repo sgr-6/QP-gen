@@ -60,7 +60,7 @@ RULES:
 6. Academic Rigor: The total sum of marks for all questions in the entire paper that have a BTL of "L1" or "L2" MUST NOT exceed ${maxL1L2} marks.
 7. BTL must be one of: L1, L2, L3, L4, L5, L6. CO must be one of: CO1, CO2, CO3, CO4, CO5.
 8. Output strictly a JSON object matching this schema exactly, with NO markdown code blocks.
-9. Also infer metadata for the paper header based on the syllabus or general academic context (e.g., Exam Name, Duration, Max Marks, Semester, Date). Use generic placeholder dates if none are found.
+9. Also infer metadata for the paper header based on the syllabus or general academic context. Extract the "semester" (e.g., "First", "Second", "Third", etc.), the "examTitle" (e.g., "B.E. Degree Semester End Examination (SEE)"), and the "date" (e.g., "July 2024") into separate fields so they can be edited independently. Use generic placeholder dates if none are found.
 
 CRITICAL INSTRUCTION FOR IMAGES AND FORMATTING:
 To prevent loss of images, graphs, and formatting, you MUST return the 'id' of the question from the Question Bank and set 'isNew': false. Do NOT include 'questionText' if 'isNew' is false.
@@ -73,8 +73,9 @@ SCHEMA:
   "totalMarks": ${isInternal ? 50 : 100},
   "warnings": ["List any rules you had to break, if any"],
   "headerMetadata": {
-    "examTitle": "First Semester B E Degree Semester End Examination (SEE), July 2024",
-    "semester": "1st",
+    "institution": "Visvesvaraya Technological University, Belagavi",
+    "examTitle": "B.E. Degree Semester End Examination (SEE)",
+    "semester": "First",
     "subjectCode": "23MAT11A",
     "qpCode": "11101",
     "date": "July 2024",
