@@ -13,7 +13,7 @@ const uploadNotes = async (req, res) => {
 
     const tenantId = req.user.tenantId || 'default_tenant';
     const file = req.file;
-    const { courseTitle, department, semester, subjectCode } = req.body;
+    const { courseTitle, department, semester, subjectCode, moduleNumber } = req.body;
     
     if (!courseTitle || !department || !semester || !subjectCode) {
       return res.status(400).json({ error: 'Missing required metadata (courseTitle, department, semester, subjectCode)' });
@@ -80,26 +80,32 @@ Do not include any code block ticks like \`\`\`json around the output.`;
       notesData = { summary: "Failed to extract summary.", keyTopics: [] };
     }
 
-    // Save metadata to Firestore
+    // Save metadata to Firestore using merge to handle multiple modules
     const docId = `${tenantId}_${courseTitle.replace(/\s+/g, '_').toLowerCase()}`;
+    const modKey = moduleNumber ? String(moduleNumber) : '1';
     await db.collection('notes').doc(docId).set({
       tenantId,
       courseTitle,
       department,
       semester,
       subjectCode,
-      fileName,
-      bucket: 'notes',
-      summary: notesData.summary,
-      keyTopics: notesData.keyTopics,
-      uploadedAt: new Date().toISOString(),
-      uploadedBy: req.user.email
-    });
+      modules: {
+        [modKey]: {
+          fileName,
+          bucket: 'notes',
+          summary: notesData.summary,
+          keyTopics: notesData.keyTopics,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: req.user.email
+        }
+      }
+    }, { merge: true });
 
     res.json({
       message: 'Notes uploaded and processed successfully',
       data: {
         docId,
+        moduleNumber: modKey,
         summary: notesData.summary,
         keyTopics: notesData.keyTopics
       }

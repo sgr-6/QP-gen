@@ -34,7 +34,15 @@ const generatePaper = async (courseTitle, examType = 'semester', examConfig = nu
   // 3. Fetch Notes
   let notes = null;
   const notesDoc = await db.collection('notes').doc(docId).get();
-  if (notesDoc.exists) notes = notesDoc.data();
+  if (notesDoc.exists) {
+    const data = notesDoc.data();
+    if (data.modules) {
+      notes = data.modules;
+    } else if (data.summary) {
+      // Fallback for older notes documents
+      notes = { "1": { summary: data.summary, keyTopics: data.keyTopics } };
+    }
+  }
 
   // Validate we have at least *some* data
   if (allQuestions.length === 0 && !syllabus && !notes) {
@@ -120,14 +128,14 @@ Notes: ${JSON.stringify(notes)}
 
   // 5. Call Gemini AI with key rotation
   const response = await aiKeyManager.executeWithAI(async (ai) => {
-    return await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
+    return await ai.chat.completions.create({
+      model: 'google/gemini-2.5-flash:free',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: "json_object" }
     });
   });
 
-  const text = response.text;
+  const text = response.choices[0].message.content;
   let paper;
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);

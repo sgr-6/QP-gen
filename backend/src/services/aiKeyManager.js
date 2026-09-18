@@ -1,4 +1,4 @@
-const { GoogleGenAI } = require('@google/genai');
+const OpenAI = require('openai');
 
 class AiKeyManager {
   constructor() {
@@ -8,46 +8,42 @@ class AiKeyManager {
     
     // Split queues
     this.generateQueue = [];
-    this.embedQueue = [];
     
     this.isProcessingGenerate = false;
-    this.isProcessingEmbed = false;
     
     // Parse keys from environment
-    if (process.env.GEMINI_API_KEYS) {
-      this.keys = process.env.GEMINI_API_KEYS.split(',').map(k => k.trim()).filter(k => k.length > 0);
-    }
-    if (process.env.GEMINI_API_KEY && !this.keys.includes(process.env.GEMINI_API_KEY)) {
-      this.keys.unshift(process.env.GEMINI_API_KEY); // Original key gets priority
+    if (process.env.OPENROUTER_API_KEYS) {
+      this.keys = process.env.OPENROUTER_API_KEYS.split(',').map(k => k.trim()).filter(k => k.length > 0);
     }
     
     if (this.keys.length === 0) {
-      console.warn("No Gemini API keys provided in environment.");
+      console.warn("No OpenRouter API keys provided in environment.");
     }
     
     // Initialize a client for each key
-    this.clients = this.keys.map(key => new GoogleGenAI({ apiKey: key }));
+    this.clients = this.keys.map(key => new OpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: key,
+      defaultHeaders: {
+        "HTTP-Referer": "https://qp-generator-backend.onrender.com",
+        "X-Title": "QP Generator",
+      }
+    }));
   }
 
   /**
    * Executes an AI operation with automatic key rotation on 429 errors.
    * @param {Function} operation - Async function that takes an initialized `ai` client.
-   * @param {string} type - 'generate' (15 RPM) or 'embed' (1500 RPM)
    * @returns {Promise<any>}
    */
-  async executeWithAI(operation, type = 'generate') {
+  async executeWithAI(operation) {
     if (this.clients.length === 0) {
-      throw new Error("No GoogleGenAI clients available. Please set API keys.");
+      throw new Error("No OpenAI/OpenRouter clients available. Please set API keys.");
     }
 
     return new Promise((resolve, reject) => {
-      if (type === 'embed') {
-        this.embedQueue.push({ operation, resolve, reject });
-        this._processEmbedQueue();
-      } else {
-        this.generateQueue.push({ operation, resolve, reject });
-        this._processGenerateQueue();
-      }
+      this.generateQueue.push({ operation, resolve, reject });
+      this._processGenerateQueue();
     });
   }
 
@@ -68,16 +64,16 @@ class AiKeyManager {
           resolve(result);
           success = true;
           
-          // Wait 4000ms before starting next item in queue. 
-          // 60 seconds / 4s = 15 requests per minute (the absolute max for a single free-tier project)
-          await new Promise(r => setTimeout(r, 4000));
+          // Wait 500ms between calls
+          await new Promise(r => setTimeout(r, 500));
           break;
         } catch (error) {
-          const isRateLimit = error.status === 429 || (error.message && (error.message.includes('429') || error.message.includes('Quota')));
-          const isServerErr = error.status >= 500 || (error.message && error.message.includes('503'));
+          const status = error.status || (error.response && error.response.status);
+          const isRateLimit = status === 429 || (error.message && (error.message.includes('429') || error.message.includes('Quota')));
+          const isServerErr = status >= 500 || (error.message && error.message.includes('503'));
           
           if (isRateLimit || isServerErr) {
-            console.warn(`[AI Key Manager - Generate] Key at index ${this.currentIndex} hit rate limit or 503. Error: ${error.message}. Rotating to next key...`);
+            console.warn(`[AI Key Manager - Generate] Key at index ${this.currentIndex} hit rate limit or 50x. Error: ${error.message}. Rotating to next key...`);
             this.currentIndex = (this.currentIndex + 1) % this.clients.length;
             attempts++;
             await new Promise(r => setTimeout(r, 1000));
@@ -90,61 +86,13 @@ class AiKeyManager {
       }
 
       if (!success) {
-        console.warn(`[AI Key Manager - Generate] All keys exhausted for this item. Waiting 65 seconds for quotas to reset before retrying...`);
-        await new Promise(r => setTimeout(r, 65000));
+        console.warn(`[AI Key Manager - Generate] All keys exhausted for this item. Waiting 30 seconds for quotas to reset before retrying...`);
+        await new Promise(r => setTimeout(r, 30000));
         this.generateQueue.unshift({ operation, resolve, reject });
       }
     }
 
     this.isProcessingGenerate = false;
-  }
-
-  async _processEmbedQueue() {
-    if (this.isProcessingEmbed || this.embedQueue.length === 0) return;
-    this.isProcessingEmbed = true;
-
-    while (this.embedQueue.length > 0) {
-      const { operation, resolve, reject } = this.embedQueue.shift();
-      let attempts = 0;
-      const maxAttempts = this.clients.length * 2;
-      let success = false;
-
-      while (attempts < maxAttempts) {
-        const currentClient = this.clients[this.currentIndex];
-        try {
-          const result = await operation(currentClient);
-          resolve(result);
-          success = true;
-          
-          // Embeddings have 1500 RPM. We wait 45ms to ensure we don't blast too fast.
-          // 60 seconds / 0.045s ≈ 1333 requests per minute
-          await new Promise(r => setTimeout(r, 45));
-          break;
-        } catch (error) {
-          const isRateLimit = error.status === 429 || (error.message && (error.message.includes('429') || error.message.includes('Quota')));
-          const isServerErr = error.status >= 500 || (error.message && error.message.includes('503'));
-          
-          if (isRateLimit || isServerErr) {
-            console.warn(`[AI Key Manager - Embed] Key at index ${this.currentIndex} hit rate limit or 503. Error: ${error.message}. Rotating to next key...`);
-            this.currentIndex = (this.currentIndex + 1) % this.clients.length;
-            attempts++;
-            await new Promise(r => setTimeout(r, 1000));
-          } else {
-            reject(error);
-            success = true;
-            break;
-          }
-        }
-      }
-
-      if (!success) {
-        console.warn(`[AI Key Manager - Embed] All keys exhausted for this item. Waiting 65 seconds for quotas to reset before retrying...`);
-        await new Promise(r => setTimeout(r, 65000));
-        this.embedQueue.unshift({ operation, resolve, reject });
-      }
-    }
-
-    this.isProcessingEmbed = false;
   }
 }
 

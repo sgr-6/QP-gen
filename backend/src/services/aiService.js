@@ -1,5 +1,15 @@
 const aiKeyManager = require('./aiKeyManager');
+let pipeline = null;
 
+// Initialize transformers.js pipeline lazily
+const initPipeline = async () => {
+  if (!pipeline) {
+    // Import dynamically to avoid loading issues in some environments
+    const transformers = await import('@xenova/transformers');
+    pipeline = await transformers.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  }
+  return pipeline;
+};
 /**
  * Uses Gemini API to infer missing BTL and CO from a question.
  * @param {string} questionText 
@@ -22,16 +32,14 @@ const inferTags = async (questionText) => {
 
   try {
     const response = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        }
+      return await ai.chat.completions.create({
+        model: 'google/gemini-2.5-flash:free', // Default fast model on OpenRouter
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: "json_object" }
       });
     });
     
-    const text = response.text;
+    const text = response.choices[0].message.content;
     const parsed = JSON.parse(text);
     return {
       btl: parsed.btl || 'L2',
@@ -50,17 +58,12 @@ const inferTags = async (questionText) => {
  */
 const generateEmbedding = async (text) => {
   try {
-    const response = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.models.embedContent({ 
-        model: 'gemini-embedding-2', 
-        contents: text,
-        config: { outputDimensionality: 768 }
-      });
-    }, 'embed');
-    return response.embeddings[0].values;
+    const extractor = await initPipeline();
+    const output = await extractor(text, { pooling: 'mean', normalize: true });
+    return Array.from(output.data);
   } catch (error) {
-    console.error("Error generating embedding:", error.message);
-    return Array(768).fill(0.0);
+    console.error("Error generating local embedding:", error.message);
+    return Array(384).fill(0.0);
   }
 };
 
@@ -75,21 +78,21 @@ const checkImageSanity = async (base64Image, mimeType) => {
   
   try {
     const response = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: [
+      return await ai.chat.completions.create({
+        model: 'google/gemini-2.5-flash:free',
+        messages: [
           {
-            inlineData: {
-              data: base64Image,
-              mimeType: mimeType
-            }
-          },
-          prompt
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } }
+            ]
+          }
         ]
       });
     });
     
-    const text = response.text.trim().toUpperCase();
+    const text = response.choices[0].message.content.trim().toUpperCase();
     return text.includes("YES");
   } catch (error) {
     console.error("Error checking image sanity:", error.message);

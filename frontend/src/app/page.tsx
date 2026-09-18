@@ -37,6 +37,7 @@ export default function ExamDashboard() {
   const [generateTitle, setGenerateTitle] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterSemester, setFilterSemester] = useState('');
+  const [moduleNumber, setModuleNumber] = useState('1');
   const [banks, setBanks] = useState<any[]>([]);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [generateStatus, setGenerateStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
@@ -185,6 +186,7 @@ export default function ExamDashboard() {
     formData.append('department', department);
     formData.append('semester', semester);
     formData.append('subjectCode', subjectCode);
+    formData.append('moduleNumber', moduleNumber);
 
     try {
       const res = await api.post(`/api/notes/upload`, formData, {
@@ -579,6 +581,24 @@ export default function ExamDashboard() {
                       className="pill-input"
                     />
                   </div>
+
+                  {uploadMode === 'notes' && (
+                    <div className="input-group">
+                      <label className="input-label">Module Number</label>
+                      <select 
+                        value={moduleNumber} 
+                        onChange={(e) => setModuleNumber(e.target.value)}
+                        className="pill-input"
+                        style={{ padding: '12px 16px', width: '100%', appearance: 'auto' }}
+                      >
+                        <option value="1">Module 1</option>
+                        <option value="2">Module 2</option>
+                        <option value="3">Module 3</option>
+                        <option value="4">Module 4</option>
+                        <option value="5">Module 5</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div className="input-group">
                     <label className="input-label">Source File</label>

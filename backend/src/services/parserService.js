@@ -140,13 +140,14 @@ DOCUMENT TEXT:
 ${markdown}`;
 
     const geminiResponse = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: prompt
+      return await ai.chat.completions.create({
+        model: 'google/gemini-2.5-flash:free',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: "json_object" }
       });
     });
 
-    let resultText = geminiResponse.text.replace(/^```json/im, '').replace(/```$/im, '').trim();
+    let resultText = geminiResponse.choices[0].message.content.replace(/^```json/im, '').replace(/```$/im, '').trim();
     
     // Restore image placeholders
     for (const [placeholder, originalImage] of Object.entries(imageMap)) {
@@ -169,46 +170,28 @@ ${markdown}`;
 };
 
 const parsePDF = async (url) => {
-  // Use Gemini 1.5 Pro to natively parse PDF preserving tables
   const response = await axios.get(url, { responseType: 'arraybuffer' });
   const dataBuffer = Buffer.from(response.data);
-  
-  const tempPath = path.join(os.tmpdir(), `temp_${Date.now()}.pdf`);
-  fs.writeFileSync(tempPath, dataBuffer);
+  const data = await pdfParse(dataBuffer);
   
   try {
-    const uploadedFile = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.files.upload({
-        file: tempPath,
-        mimeType: 'application/pdf',
-      });
-    });
-
     const prompt = `You are an expert exam parser. Extract all questions from this document. 
 Return ONLY a valid JSON array of objects with the following schema:
 [{ "questionText": "Question text preserving any Markdown formatting for tables and images", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
-For tables, use standard markdown table syntax inside the questionText. 
-CRITICAL: If the document contains any markdown image tags like ![image](url), you MUST preserve them exactly as they are in the 'questionText'. Do not strip them out!
-CRITICAL: If a question contains a table followed by sub-questions (e.g., "1) What is...", "2) Determine..."), make sure the sub-questions are placed OUTSIDE and BELOW the markdown table, NOT inside the table rows!
-Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.`;
+Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.
+
+DOCUMENT TEXT:
+${data.text}`;
 
     const geminiResponse = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: [
-          { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
-          prompt
-        ]
+      return await ai.chat.completions.create({
+        model: 'google/gemini-2.5-flash:free',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: "json_object" }
       });
     });
 
-    // Cleanup
-    await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.files.delete({ name: uploadedFile.name });
-    });
-    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-
-    let resultText = geminiResponse.text.replace(/^```json/im, '').replace(/```$/im, '').trim();
+    let resultText = geminiResponse.choices[0].message.content.replace(/^```json/im, '').replace(/```$/im, '').trim();
     const parsedJson = JSON.parse(resultText);
     
     // Map to the raw format the normalizer expects
@@ -221,10 +204,8 @@ Do not include any code block ticks like \`\`\`json around the output, just outp
     }));
 
   } catch (error) {
-    console.error("Gemini PDF parsing failed, falling back to pdf-parse:", error);
-    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    console.error("OpenRouter PDF parsing failed, falling back to regex:", error);
     // Fallback
-    const data = await pdfParse(dataBuffer);
     return splitTextIntoObjects(data.text);
   }
 };

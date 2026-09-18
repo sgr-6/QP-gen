@@ -73,7 +73,7 @@ CREATE TABLE question_embeddings (
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   firestore_id TEXT NOT NULL,
   question_text TEXT NOT NULL,
-  embedding vector(768),
+  embedding vector(384),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE question_embeddings ENABLE ROW LEVEL SECURITY;
@@ -81,11 +81,12 @@ CREATE INDEX ON question_embeddings USING hnsw (embedding vector_cosine_ops);
 
 -- Similarity search function
 CREATE OR REPLACE FUNCTION match_questions(
-  query_embedding vector(768),
+  query_embedding vector(384),
   match_threshold float,
   match_count int,
   p_tenant_id UUID
 )
+
 RETURNS TABLE (
   firestore_id TEXT,
   question_text TEXT,
