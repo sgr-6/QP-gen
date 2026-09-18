@@ -129,7 +129,7 @@ Notes: ${JSON.stringify(notes)}
   // 5. Call Gemini AI with key rotation
   const response = await aiKeyManager.executeWithAI(async (ai) => {
     return await ai.chat.completions.create({
-      model: 'google/gemini-2.5-flash:free',
+      model: 'google/gemini-2.5-flash',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: "json_object" }
     });

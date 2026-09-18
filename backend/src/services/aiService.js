@@ -33,7 +33,7 @@ const inferTags = async (questionText) => {
   try {
     const response = await aiKeyManager.executeWithAI(async (ai) => {
       return await ai.chat.completions.create({
-        model: 'google/gemini-2.5-flash:free', // Default fast model on OpenRouter
+        model: 'google/gemini-2.5-flash', // Default fast model on OpenRouter
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: "json_object" }
       });
