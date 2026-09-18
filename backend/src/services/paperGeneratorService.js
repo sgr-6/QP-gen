@@ -121,7 +121,7 @@ Notes: ${JSON.stringify(notes)}
   // 5. Call Gemini AI with key rotation
   const response = await aiKeyManager.executeWithAI(async (ai) => {
     return await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.6-flash',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
