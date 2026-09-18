@@ -23,7 +23,7 @@ const inferTags = async (questionText) => {
   try {
     const response = await aiKeyManager.executeWithAI(async (ai) => {
       return await ai.models.generateContent({
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-1.5-flash',
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -76,7 +76,7 @@ const checkImageSanity = async (base64Image, mimeType) => {
   try {
     const response = await aiKeyManager.executeWithAI(async (ai) => {
       return await ai.models.generateContent({
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-1.5-flash',
         contents: [
           {
             inlineData: {
