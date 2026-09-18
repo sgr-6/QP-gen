@@ -131,7 +131,8 @@ Notes: ${JSON.stringify(notes)}
     return await ai.chat.completions.create({
       model: 'google/gemini-2.5-flash',
       messages: [{ role: 'user', content: prompt }],
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
+      max_tokens: 8000
     });
   });
 
