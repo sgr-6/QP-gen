@@ -259,3 +259,73 @@ describe('Serial queue survives a failed operation', () => {
     expect(secondOperation).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Provider failover between Gemini and OpenRouter keys', () => {
+  const gemini = () => ({ provider: 'gemini', chat: { completions: { create: jest.fn() } } });
+  const openRouter = () => ({ provider: 'openrouter', chat: { completions: { create: jest.fn() } } });
+  const run = ai => ai.chat.completions.create({ model: 'google/gemini-2.5-flash' });
+
+  test('moves to the next key when a key has no credits left', async () => {
+    const [first, second] = [openRouter(), openRouter()];
+    first.chat.completions.create.mockRejectedValue(Object.assign(new Error("This request's maximum cost exceeds your available credits."), { status: 402 }));
+    second.chat.completions.create.mockResolvedValue('ok');
+    const manager = new AiKeyManager({ clients: [first, second], sleep: jest.fn() });
+    await expect(manager.executeWithAI(run)).resolves.toBe('ok');
+  });
+
+  test('reports exhausted credits clearly when every key is out', async () => {
+    const [first, second] = [openRouter(), openRouter()];
+    for (const client of [first, second]) client.chat.completions.create.mockRejectedValue(Object.assign(new Error('maximum cost exceeds your available credits'), { status: 402 }));
+    const manager = new AiKeyManager({ clients: [first, second], sleep: jest.fn() });
+    await expect(manager.executeWithAI(run)).rejects.toMatchObject({ status: 402, message: expect.stringMatching(/credits are exhausted.*GEMINI_API_KEYS/) });
+  });
+
+  test('treats Google\'s HTTP 400 invalid-key response like an invalid key', async () => {
+    const [bad, good] = [gemini(), gemini()];
+    bad.chat.completions.create.mockRejectedValue(Object.assign(new Error('API key not valid. Please pass a valid API key.'), { status: 400 }));
+    good.chat.completions.create.mockResolvedValue('ok');
+    const manager = new AiKeyManager({ clients: [bad, good], sleep: jest.fn() });
+    await expect(manager.executeWithAI(run)).resolves.toBe('ok');
+    expect(manager.cooldowns[0]).toBeGreaterThan(Date.now() + 30 * 60 * 1000);
+  });
+
+  test('switches keys when a Gemini key hits its daily quota', async () => {
+    const [limited, fallback] = [gemini(), openRouter()];
+    limited.chat.completions.create.mockRejectedValue(Object.assign(new Error('Quota exceeded for metric: generate_content_free_tier_requests, limit: 250 per day'), { status: 429 }));
+    fallback.chat.completions.create.mockResolvedValue('ok');
+    const sleep = jest.fn();
+    const manager = new AiKeyManager({ clients: [limited, fallback], sleep });
+    await expect(manager.executeWithAI(run)).resolves.toBe('ok');
+    expect(sleep).toHaveBeenCalledTimes(1); // only the normal pacing after success
+  });
+
+  test('skips Gemini keys for a model only OpenRouter serves, without cooling them down', async () => {
+    const [direct, router] = [gemini(), openRouter()];
+    direct.chat.completions.create.mockRejectedValue(Object.assign(new Error('unsupported'), { unsupportedModel: true }));
+    router.chat.completions.create.mockResolvedValue('ok');
+    const manager = new AiKeyManager({ clients: [direct, router], sleep: jest.fn() });
+    await expect(manager.executeWithAI(run)).resolves.toBe('ok');
+    expect(manager.cooldowns[0]).toBe(0);
+  });
+
+  test('builds Gemini clients first and maps OpenRouter model ids for Google', async () => {
+    const saved = { g: process.env.GEMINI_API_KEYS, g1: process.env.GEMINI_API_KEY, o: process.env.OPENROUTER_API_KEYS, o1: process.env.OPENROUTER_API_KEY };
+    const create = jest.fn().mockResolvedValue('ok');
+    OpenAI.mockImplementation(() => ({ chat: { completions: { create } } }));
+    Object.assign(process.env, { GEMINI_API_KEYS: 'g1, g2', GEMINI_API_KEY: 'g1', OPENROUTER_API_KEYS: 'o1' });
+    delete process.env.OPENROUTER_API_KEY;
+    try {
+      const manager = new AiKeyManager({ sleep: jest.fn() });
+      expect(manager.clients.map(c => c.provider)).toEqual(['gemini', 'gemini', 'openrouter']);
+      expect(OpenAI.mock.calls[0][0].baseURL).toContain('generativelanguage.googleapis.com');
+      await manager.executeWithAI(ai => ai.chat.completions.create({ model: 'google/gemini-2.5-flash-lite', max_tokens: 10 }));
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-2.5-flash-lite', reasoning_effort: 'none', max_tokens: 10 }), undefined);
+      await expect(manager.clients[0].chat.completions.create({ model: 'openrouter/free' })).rejects.toMatchObject({ unsupportedModel: true });
+    } finally {
+      for (const [k, v] of [['GEMINI_API_KEYS', saved.g], ['GEMINI_API_KEY', saved.g1], ['OPENROUTER_API_KEYS', saved.o], ['OPENROUTER_API_KEY', saved.o1]]) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+      OpenAI.mockImplementation(() => ({ offline: true }));
+    }
+  });
+});

@@ -108,7 +108,11 @@ describe('Question normalization', () => {
     });
   });
 
-  test.each([0, -1, 101, 2.5, 'invalid'])('leaves invalid imported marks %p unresolved', marks => {
+  test.each([['10 Marks', 10], [' 6 marks ', 6], ['8', 8], [7, 7]])('reads model marks %p as %p', (marks, expected) => {
+    expect(normalizeQuestion({ question: 'Define resistor current.', marks, module: 'M1' }).marks).toBe(expected);
+  });
+
+  test.each([0, -1, 101, 2.5, 'invalid', '5+5'])('leaves invalid imported marks %p unresolved', marks => {
     expect(normalizeQuestion({ question: 'Define resistor current.', marks, module: 'M1' })).toMatchObject({ marks: null, reviewRequired: true });
   });
 
@@ -160,6 +164,37 @@ describe('Question-safe chunking and mocked text extraction', () => {
     expect(requestJson).toHaveBeenCalledTimes(2);
     expect(requestJson.mock.calls[1][0].prompt).toContain('Previous module: M2');
     expect(requestJson.mock.calls[0][0].prompt).toContain(table);
+  });
+
+  test('ignores cover-page images before the first question but still requires question diagrams', async () => {
+    const imageMap = { __IMAGE_PLACEHOLDER_0__: '![](logo.png)', __IMAGE_PLACEHOLDER_1__: '![](table.png)' };
+    const text = 'College Name\n__IMAGE_PLACEHOLDER_0__\n**Question Bank**\n\n1. Compute the average waiting time using FCFS.\n__IMAGE_PLACEHOLDER_1__ [10 Marks]';
+    requestJson.mockResolvedValueOnce({ questions: [{ questionText: 'Compute the average waiting time using FCFS.\n__IMAGE_PLACEHOLDER_1__', marks: 10 }] });
+    const [question] = await parseQuestionText(text, imageMap);
+    expect(question.questionText).toContain('![](table.png)');
+    expect(requestJson.mock.calls[0][0].prompt).not.toContain('__IMAGE_PLACEHOLDER_0__');
+
+    requestJson.mockResolvedValueOnce({ questions: [{ questionText: 'Compute the average waiting time using FCFS.', marks: 10 }] });
+    await expect(parseQuestionText(text, imageMap)).rejects.toThrow(/dropped a source image/);
+  });
+
+  test('recovers stripped [Marks] [L] [CO] tags from the matching source question', async () => {
+    const text = [
+      '**Module 2**',
+      '1. Consider the following processes with burst times. Compute the average waiting time using FCFS.',
+      '__IMAGE_PLACEHOLDER_0__ [10 Marks] [L3] [CO2]',
+      '2. Consider the following processes with burst times. Compute the average waiting time using SJF.',
+      '__IMAGE_PLACEHOLDER_1__ [6 Marks] [L3]',
+      '3. Define a process. [2 Marks] [L1]'
+    ].join('\n');
+    const imageMap = { __IMAGE_PLACEHOLDER_0__: '![](a.png)', __IMAGE_PLACEHOLDER_1__: '![](b.png)' };
+    requestJson.mockResolvedValueOnce({ questions: [
+      { questionText: 'Consider the following processes with burst times. Compute the average waiting time using SJF.\n__IMAGE_PLACEHOLDER_1__', marks: null, btl: null, module: 'Module 2' },
+      { questionText: 'Consider the following processes with burst times. Compute the average waiting time using FCFS.\n__IMAGE_PLACEHOLDER_0__', marks: null, btl: null, module: 'Module 2' },
+      { questionText: 'Define a process.', marks: 4, btl: null, module: 'Module 2' }
+    ] });
+    const questions = await parseQuestionText(text, imageMap);
+    expect(questions.map(q => [q.marks, q.btl, q.co || null])).toEqual([[6, 'L3', null], [10, 'L3', 'CO2'], [4, 'L1', null]]);
   });
 
   test.each([
