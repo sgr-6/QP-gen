@@ -1,206 +1,255 @@
-const { db, admin } = require('../config/firebaseAdmin');
+const { db } = require('../config/firebaseAdmin');
 const MarkdownIt = require('markdown-it');
-const md = new MarkdownIt({ html: true, breaks: true });
-const aiKeyManager = require('./aiKeyManager');
+const md = new MarkdownIt({ html: false, breaks: true });
+const { requestJson } = require('./structuredAiService');
+const { BLOOM, GENERATION_LEVELS, classifyBloom, mapCourseOutcome, normalizeModule } = require('./bloomService');
 
-/**
- * AI-Powered Paper Generation Algorithm
- * Fetches Syllabus, Notes, and Question Bank to intelligently generate a paper matching constraints.
- */
+const SHAPES = {
+  semester: { modules: 5, perSplit: 20, total: 100, maxL1L2: 30, duration: '3 Hours', title: 'Semester End Examination' },
+  internal: { modules: 2, perSplit: 25, total: 50, maxL1L2: 15, duration: '90 Minutes', title: 'Internal Assessment' }
+};
+const MIN_NEW_MARKS = 3;
+const WRITE_ATTEMPTS = 2;
+const QUESTION_BATCH_SIZE = 4;
+
+const getL1L2Marks = split => split.reduce((sum, q) => sum + (['L1', 'L2'].includes(q.btl) ? Number(q.marks) : 0), 0);
+const normalizeText = text => String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+function buildValidSplit(pool, targetMarks) {
+  const candidates = pool.filter(q => Number.isInteger(q.marks) && q.marks > 0 && q.marks <= targetMarks);
+  // Preserve assigned marks. Never inflate one question to fill a section.
+  let best = null;
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const pair = [candidates[i], candidates[j]];
+      if (pair.reduce((n, q) => n + q.marks, 0) === targetMarks && (!best || getL1L2Marks(pair) < getL1L2Marks(best))) best = pair;
+      for (let k = j + 1; k < candidates.length; k++) {
+        const triple = [...pair, candidates[k]];
+        if (triple.reduce((n, q) => n + q.marks, 0) === targetMarks && (!best || getL1L2Marks(triple) < getL1L2Marks(best))) best = triple;
+      }
+    }
+  }
+  return best;
+}
+
+// Chooses bank questions for one 2–3 question split; any shortfall becomes new L3 slots with fixed marks.
+function planSplit(pool, target, l1l2Budget) {
+  const usable = pool.filter(q => q.marks <= target);
+  let best = { bank: [], newMarks: [Math.ceil(target / 2), Math.floor(target / 2)], score: Infinity };
+  const consider = chosen => {
+    const gap = target - chosen.reduce((n, q) => n + q.marks, 0);
+    const l1l2 = getL1L2Marks(chosen);
+    if (gap < 0 || l1l2 > l1l2Budget) return;
+    let newMarks;
+    if (gap === 0) newMarks = chosen.length >= 2 ? [] : null;
+    else if (!chosen.length) newMarks = [Math.ceil(target / 2), Math.floor(target / 2)];
+    else if (chosen.length === 1 && gap > 20) newMarks = [Math.ceil(gap / 2), Math.floor(gap / 2)];
+    else newMarks = chosen.length <= 2 && gap >= MIN_NEW_MARKS && gap <= 20 ? [gap] : null;
+    if (!newMarks) return;
+    const score = newMarks.length * 10000 + gap * 10 + l1l2;
+    if (score < best.score) best = { bank: chosen, newMarks, score };
+  };
+  consider([]);
+  for (let i = 0; i < usable.length; i++) {
+    consider([usable[i]]);
+    for (let j = i + 1; j < usable.length; j++) {
+      consider([usable[i], usable[j]]);
+      for (let k = j + 1; k < usable.length; k++) consider([usable[i], usable[j], usable[k]]);
+    }
+  }
+  return best;
+}
+
+function validateAcademicRigor(paper) {
+  const maximum = paper.modules.reduce((sum, mod) => sum + Math.max(getL1L2Marks(mod.splitA), getL1L2Marks(mod.splitB)), 0);
+  const limit = (paper.totalMarks || 100) * 0.3;
+  paper.warnings ||= [];
+  if (maximum > limit) paper.warnings.push(`Maximum answerable L1/L2 marks (${maximum}) exceeds the 30% limit (${limit}).`);
+  return maximum <= limit;
+}
+
+const fatalProviderError = error => {
+  const status = Number(error?.status || error?.response?.status);
+  if (status >= 400 && status < 500 && status !== 408) return true;
+  return /budget reached|not configured|input exceeds|credits are nearly exhausted|All OpenRouter API keys are cooling/i.test(error?.message || '');
+};
+
+function newQuestionIssue(item, seen) {
+  const text = typeof item?.questionText === 'string' ? item.questionText.trim() : '';
+  if (text.length < 15 || text.length > 1500) return 'question text was missing or not 15–1500 characters';
+  if (seen.has(normalizeText(text))) return 'it repeated an existing question';
+  const { btl } = classifyBloom(text, 'L3', item.bloomRationale || '');
+  if (!btl) return 'its Bloom level could not be verified';
+  if (!GENERATION_LEVELS.includes(btl)) return `it demands ${btl} (${BLOOM[btl].name}); only Bloom L1–L3 is allowed`;
+  if (btl !== 'L3') return `it is ${btl} (${BLOOM[btl].name}), but the 30% L1/L2 limit requires L3 (Apply)`;
+  return null;
+}
+
+function moduleContext(syllabus, notes, moduleNumber) {
+  const mod = (syllabus?.modules || []).find(m => normalizeModule(m.moduleNumber) === moduleNumber);
+  const note = notes?.[moduleNumber] || notes?.[moduleNumber.slice(1)];
+  return {
+    topics: (mod?.topics || note?.keyTopics || []).slice(0, 25).map(topic => String(topic).slice(0, 200)),
+    notes: note?.summary ? String(note.summary).slice(0, 600) : undefined
+  };
+}
+
+async function writeMissingQuestions({ slots, courseTitle, syllabus, notes, existing }) {
+  const written = new Map();
+  const rejections = new Map();
+  const seen = new Set(existing.map(normalizeText));
+  let lastError = null;
+  let batchSize = QUESTION_BATCH_SIZE;
+  attempts: for (let attempt = 0; attempt < WRITE_ATTEMPTS && written.size < slots.length; attempt++) {
+    const remaining = slots.filter(slot => !written.has(slot.slotId));
+    const size = batchSize;
+    for (let offset = 0; offset < remaining.length; offset += size) {
+      const pending = remaining.slice(offset, offset + size);
+      const modules = [...new Set(pending.map(slot => slot.module))];
+      const outcomes = (syllabus?.courseOutcomes || []).map(o => ({ id: o.id, description: String(o.description || '').slice(0, 200), modules: o.modules }));
+      const prompt = `Write ${pending.length} NEW exam question(s) for the course "${courseTitle}", one per slot below.
+Every question MUST be Bloom L3 (Apply): ${BLOOM.L3.definition} The student executes a known method, formula, algorithm or procedure on concrete data or a stated scenario that the question supplies.
+Rules:
+- Begin with an L3 verb: ${BLOOM.L3.verbs.join(', ')}. Do not ask the student to define, list, explain, describe, analyze, evaluate, justify or design.
+- Include the specific data, schema, code or scenario needed, scaled to the slot's marks.
+- Stay within that slot's module topics. Do not repeat or paraphrase an existing question.
+- "co" must be an outcome id listed for that module, or null if none fits. Never invent an outcome.
+- Keep each question under 120 words. Return question text only, no solutions, analysis, headers or a whole paper.
+- Do not put marks, numbering or Bloom labels in questionText.
+${attempt && rejections.size ? `Previous answers were rejected: ${JSON.stringify(Object.fromEntries([...rejections].filter(([id]) => pending.some(s => s.slotId === id))))}\n` : ''}
+SLOTS: ${JSON.stringify(pending.map(({ slotId, module, marks }) => ({ slotId, module, marks })))}
+MODULE CONTEXT: ${JSON.stringify(Object.fromEntries(modules.map(m => [m, moduleContext(syllabus, notes, m)])))}
+OUTCOMES: ${JSON.stringify(outcomes)}
+EXISTING QUESTIONS: ${JSON.stringify(existing.slice(0, 40).map(text => String(text).slice(0, 150)))}
+Return only JSON: {"questions":[{"slotId":"M1-A2","questionText":"...","co":"CO1","bloomRationale":"One sentence on why this is L3."}]}`;
+      let response;
+      try {
+        response = await requestJson({ prompt, task: 'generation', maxTokens: 1500 + pending.length * 400 });
+      } catch (error) {
+        lastError = error;
+        if (fatalProviderError(error)) break attempts;
+        if (/incomplete \(length\)/i.test(error.message || '') || error instanceof SyntaxError) {
+          batchSize = 1;
+          if (attempt === 0) continue attempts;
+        }
+        continue;
+      }
+      for (const item of Array.isArray(response?.questions) ? response.questions : []) {
+        const slot = pending.find(s => s.slotId === item?.slotId);
+        if (!slot || written.has(slot.slotId)) continue;
+        const issue = newQuestionIssue(item, seen);
+        if (issue) { rejections.set(slot.slotId, issue); continue; }
+        const questionText = item.questionText.trim();
+        seen.add(normalizeText(questionText));
+        rejections.delete(slot.slotId);
+        written.set(slot.slotId, { id: null, isNew: true, questionText, marks: slot.marks, btl: 'L3', module: slot.module, reviewRequired: true, ...mapCourseOutcome(questionText, syllabus, item.co, slot.module) });
+      }
+    }
+  }
+  const missing = slots.filter(slot => !written.has(slot.slotId));
+  if (missing.length) {
+    const detail = missing.slice(0, 3).map(slot => `${slot.module} part ${slot.split} (${slot.marks} marks): ${rejections.get(slot.slotId) || lastError?.message || 'AI did not return this question'}`).join('; ');
+    throw new Error(`Could not write ${missing.length} required new L3 question(s). ${detail}. Approve more L3 questions in these modules, or try again.`);
+  }
+  return written;
+}
+
 const generatePaper = async (courseTitle, examType = 'semester', examConfig = null, tenantId, formatSelection = 'sjb', customFormatInstructions = '') => {
   if (!tenantId) {
     throw new Error('Tenant ID is required for generation');
   }
 
-  // 1. Fetch available questions for the course
   let allQuestions = [];
   const banksQuery = await db.collection('question_banks')
     .where('courseTitle', '==', courseTitle)
     .where('tenantId', '==', tenantId)
     .get();
-  
+
   if (!banksQuery.empty) {
     const bankDoc = banksQuery.docs[0];
     const questionsSnapshot = await bankDoc.ref.collection('questions').get();
     questionsSnapshot.forEach(doc => allQuestions.push({ id: doc.id, ...doc.data() }));
+    if (allQuestions.length && !allQuestions.some(q => q.reviewStatus !== 'pending_review')) {
+      throw new Error('Review and approve the question bank before generating a paper.');
+    }
+    allQuestions = allQuestions.filter(q => q.reviewStatus !== 'pending_review' && !q.isDuplicate && GENERATION_LEVELS.includes(q.btl) && Number.isInteger(q.marks) && q.marks > 0 && normalizeModule(q.module));
+    if (questionsSnapshot.size && !allQuestions.length) {
+      throw new Error('The question bank has no approved questions with Bloom L1–L3, valid marks and a module. Correct or approve at least one question before generating a paper.');
+    }
   }
 
-  // 2. Fetch Syllabus
   const docId = `${tenantId}_${courseTitle.replace(/\s+/g, '_').toLowerCase()}`;
   let syllabus = null;
   const syllabusDoc = await db.collection('syllabi').doc(docId).get();
   if (syllabusDoc.exists) syllabus = syllabusDoc.data();
 
-  // 3. Fetch Notes
   let notes = null;
   const notesDoc = await db.collection('notes').doc(docId).get();
   if (notesDoc.exists) {
     const data = notesDoc.data();
-    if (data.modules) {
-      notes = data.modules;
-    } else if (data.summary) {
-      // Fallback for older notes documents
-      notes = { "1": { summary: data.summary, keyTopics: data.keyTopics } };
-    }
+    if (data.modules) notes = data.modules;
+    else if (data.summary) notes = { 1: { summary: data.summary, keyTopics: data.keyTopics } };
   }
 
-  // Validate we have at least *some* data
   if (allQuestions.length === 0 && !syllabus && !notes) {
     throw new Error(`No question bank, syllabus, or notes found for course: ${courseTitle}. Cannot generate paper.`);
   }
 
   const isInternal = examType === 'internal';
-  const targetMarksPerSplit = isInternal ? 25 : 20;
-  const numModules = isInternal ? 2 : 5;
-  const maxL1L2 = isInternal ? 15 : 30; // 30% of total
-
-  // 4. Construct Prompt
-  const prompt = `
-You are an expert exam paper setter for an engineering college. 
-Your task is to generate a highly structured exam paper in JSON format based on the provided Question Bank, Syllabus, and Course Notes.
-
-RULES:
-1. The exam type is "${examType}". You must generate exactly ${numModules} modules (named M1, M2...).
-2. For each module, you must provide a 'splitA' and a 'splitB' array of questions.
-3. The sum of 'marks' in 'splitA' MUST EXACTLY EQUAL ${targetMarksPerSplit}.
-4. The sum of 'marks' in 'splitB' MUST EXACTLY EQUAL ${targetMarksPerSplit}.
-5. You must select questions from the provided "Question Bank". If the bank lacks sufficient questions for a module, you MUST formulate new realistic exam questions based on the "Syllabus" and "Notes" to reach exactly the required marks.
-6. Academic Rigor: The total sum of marks for all questions in the entire paper that have a BTL of "L1" or "L2" MUST NOT exceed ${maxL1L2} marks.
-7. BTL must be one of: L1, L2, L3, L4, L5, L6. CO must be one of: CO1, CO2, CO3, CO4, CO5.
-8. Output strictly a JSON object matching this schema exactly, with NO markdown code blocks.
-9. Also infer metadata for the paper header based on the syllabus or general academic context. Extract the "semester" (e.g., "First", "Second", "Third", etc.), the "examTitle" (e.g., "B.E. Degree Semester End Examination (SEE)"), and the "date" (e.g., "July 2024") into separate fields so they can be edited independently. Use generic placeholder dates if none are found.
-10. You must analyze your generated paper and provide a summary of any CO/BTL deviation errors, any buffer marks you applied to reach the exact section totals, and rate the toughness of each section (from 1 to 10) in the "analysis" object.
-
-FORMAT SPECIFIC INSTRUCTIONS:
-${formatSelection === 'sjb' ? `You are generating a paper for SJB Institute of Technology (Autonomous). Do NOT mention VTU in the headers or instructions.` : ''}
-${formatSelection === 'standard' ? `You are generating a standard VTU format paper.` : ''}
-${formatSelection === 'custom' && customFormatInstructions ? `Follow these custom format instructions precisely: ${customFormatInstructions}` : ''}
-
-
-CRITICAL INSTRUCTION FOR IMAGES AND FORMATTING:
-To prevent loss of images, graphs, and formatting, you MUST return the 'id' of the question from the Question Bank and set 'isNew': false. Do NOT include 'questionText' if 'isNew' is false.
-If you are formulating a completely new question, set 'isNew': true, 'id': null, and provide the 'questionText'.
-
-SCHEMA:
-{
-  "courseTitle": "${courseTitle}",
-  "examType": "${examType}",
-  "totalMarks": ${isInternal ? 50 : 100},
-  "warnings": ["List any rules you had to break, if any"],
-  "headerMetadata": {
-    "institution": "${formatSelection === 'sjb' ? 'SJB Institute of Technology (Autonomous)' : 'Visvesvaraya Technological University, Belagavi'}",
-    "examTitle": "B.E. Degree Semester End Examination (SEE)",
-    "semester": "First",
-    "subjectCode": "23MAT11A",
-    "qpCode": "11101",
-    "date": "July 2024",
-    "duration": "3 Hours",
-    "marks": 100
-  },
-  "modules": [
-    {
-      "moduleNumber": "M1",
-      "splitA": [ 
-        { "id": "q_0", "isNew": false, "marks": 10, "btl": "L2", "co": "CO1" },
-        { "id": null, "isNew": true, "questionText": "Formulate a new question here", "marks": 10, "btl": "L3", "co": "CO1" }
-      ],
-      "splitB": [ 
-        { "id": "q_5", "isNew": false, "marks": 20, "btl": "L3", "co": "CO2" }
-      ]
+  const shape = isInternal ? SHAPES.internal : SHAPES.semester;
+  // An even per-module L1/L2 allowance keeps the answerable maximum within 30% by construction.
+  const moduleBudget = Math.floor(shape.maxL1L2 / shape.modules);
+  const slots = [];
+  const deterministicModules = Array.from({ length: shape.modules }, (_, index) => {
+    const moduleNumber = `M${index + 1}`;
+    const pool = allQuestions.filter(q => normalizeModule(q.module) === moduleNumber);
+    const splitA = buildValidSplit(pool, shape.perSplit);
+    const splitB = splitA && buildValidSplit(pool.filter(q => !splitA.includes(q)), shape.perSplit);
+    return splitA && splitB ? { moduleNumber, splitA, splitB } : null;
+  });
+  const deterministic = deterministicModules.every(Boolean) && deterministicModules.reduce((sum, mod) => sum + Math.max(getL1L2Marks(mod.splitA), getL1L2Marks(mod.splitB)), 0) <= shape.maxL1L2;
+  const modules = deterministic ? deterministicModules.map(mod => ({ ...mod, splitA: mod.splitA.map(q => ({ ...q, isNew: false })), splitB: mod.splitB.map(q => ({ ...q, isNew: false })) })) : Array.from({ length: shape.modules }, (_, index) => {
+    const moduleNumber = `M${index + 1}`;
+    const pool = allQuestions.filter(q => normalizeModule(q.module) === moduleNumber);
+    const planA = planSplit(pool, shape.perSplit, moduleBudget);
+    const planB = planSplit(pool.filter(q => !planA.bank.includes(q)), shape.perSplit, moduleBudget);
+    for (const [split, plan] of [['A', planA], ['B', planB]]) {
+      plan.newMarks.forEach((marks, n) => slots.push({ slotId: `${moduleNumber}-${split}${plan.bank.length + n + 1}`, module: moduleNumber, split, marks }));
     }
-  ],
-  "analysis": {
-    "coBtlErrors": ["List any errors or deviations from required CO/BTL levels"],
-    "bufferMarksUsed": ["List any mark adjustments made to questions to meet section totals exactly"],
-    "toughness": {
-      "M1": "7/10",
-      "M2": "6/10"
-    },
-    "overallToughness": "6.5/10"
-  }
-}
-
-INPUT DATA:
-Question Bank: ${JSON.stringify(allQuestions.map(q => ({ id: q.id, text: q.questionText, marks: q.marks, btl: q.btl, co: q.co, module: q.module })))}
-Syllabus: ${JSON.stringify(syllabus)}
-Notes: ${JSON.stringify(notes)}
-  `;
-
-  // 5. Call Gemini AI with key rotation
-  const response = await aiKeyManager.executeWithAI(async (ai) => {
-    return await ai.chat.completions.create({
-      model: 'google/gemini-2.5-flash',
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 8000
-    });
+    return { moduleNumber, splitA: planA.bank.map(q => ({ ...q, isNew: false })), splitB: planB.bank.map(q => ({ ...q, isNew: false })) };
   });
 
-  const text = response.choices[0].message.content;
-  let paper;
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      paper = JSON.parse(jsonMatch[0]);
-    } else {
-      paper = JSON.parse(text);
+  const warnings = [];
+  if (slots.length) {
+    if (!syllabus && !notes) {
+      throw new Error(`The approved bank cannot fill ${slots.length} question slot(s) within the 30% L1/L2 limit, and no syllabus or notes are uploaded to write new L3 questions. Approve more L3 questions or upload the syllabus.`);
     }
-  } catch (e) {
-    throw new Error("AI generated invalid JSON for the paper.");
+    const written = await writeMissingQuestions({ slots, courseTitle, syllabus, notes, existing: allQuestions.map(q => q.questionText) });
+    for (const slot of slots) modules.find(m => m.moduleNumber === slot.module)[`split${slot.split}`].push(written.get(slot.slotId));
+    warnings.push(`${slots.length} new L3 question(s) were written by AI because the approved bank lacked enough L3 questions within the 30% L1/L2 limit (${[...new Set(slots.map(s => s.module))].join(', ')}). Review them before submitting.`);
   }
 
-  paper.generatedAt = new Date().toISOString();
-  if (!paper.warnings) paper.warnings = [];
-
-  const reconstructQuestions = (split) => {
-    return split.map(q => {
-      if (q.isNew === false && q.id) {
-        const bankQ = allQuestions.find(bq => bq.id === q.id);
-        if (bankQ) {
-          return {
-            id: q.id,
-            isNew: false,
-            questionText: bankQ.questionText, // PERFECTLY preserve formatting & images
-            marks: q.marks || bankQ.marks,
-            btl: q.btl || bankQ.btl,
-            co: q.co || bankQ.co
-          };
-        }
-      }
-      return {
-        id: null,
-        isNew: true,
-        questionText: q.questionText || "Missing text",
-        marks: q.marks || 5,
-        btl: q.btl || 'L2',
-        co: q.co || 'CO1'
-      };
-    });
+  const paper = {
+    courseTitle, examType, totalMarks: shape.total, warnings, modules,
+    headerMetadata: { institution: formatSelection === 'sjb' ? 'SJB Institute of Technology (Autonomous)' : 'Visvesvaraya Technological University, Belagavi', examTitle: shape.title, semester: '', subjectCode: banksQuery.docs[0]?.data().subjectCode || '', date: '', duration: shape.duration, marks: shape.total },
+    formatSelection, generatedAt: new Date().toISOString(),
+    analysis: { coBtlErrors: [], bufferMarksUsed: [], overallToughness: 'Human review required' }
   };
-
-  // 6. Pre-render HTML for frontend and reconstruct formatting
-  if (paper.modules) {
-    paper.modules.forEach(mod => {
-      if (mod.splitA) {
-        mod.splitA = reconstructQuestions(mod.splitA);
-        mod.splitA.forEach(q => {
-          if (q.questionText) q.htmlText = md.render(q.questionText);
-        });
+  const used = new Set();
+  for (const mod of paper.modules) {
+    for (const split of [mod.splitA, mod.splitB]) {
+      if (split.length < 2 || split.length > 3 || split.reduce((sum, q) => sum + q.marks, 0) !== shape.perSplit) throw new Error(`Paper section marks for ${mod.moduleNumber} are invalid.`);
+      for (const q of split) {
+        const key = q.id || normalizeText(q.questionText);
+        if (used.has(key)) throw new Error('Paper contains duplicate questions.');
+        used.add(key);
+        q.htmlText = md.render(q.questionText);
       }
-      if (mod.splitB) {
-        mod.splitB = reconstructQuestions(mod.splitB);
-        mod.splitB.forEach(q => {
-          if (q.questionText) q.htmlText = md.render(q.questionText);
-        });
-      }
-    });
+    }
   }
-
-  // Attach format metadata to paper so pdfService can use it
-  paper.formatSelection = formatSelection;
+  if (!validateAcademicRigor(paper)) throw new Error('Generated paper violates the maximum answerable 30% L1/L2 constraint.');
+  if (paper.modules.some(mod => [...mod.splitA, ...mod.splitB].some(q => !q.co))) paper.warnings.push('Some COs are unmapped because the syllabus has no matching explicit outcome.');
   return paper;
 };
 
-module.exports = {
-  generatePaper
-};
+module.exports = { generatePaper, buildValidSplit, planSplit, validateAcademicRigor, getL1L2Marks };

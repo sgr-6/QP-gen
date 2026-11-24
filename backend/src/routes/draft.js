@@ -41,7 +41,7 @@ router.get(
 router.put(
   '/:id/status',
   authenticate,
-  authorize('hod', 'controller_of_exams'),
+  authorize('professor', 'hod', 'controller_of_exams'),
   auditLog('UPDATE_DRAFT_STATUS', 'draft_paper'),
   updateDraftStatus
 );

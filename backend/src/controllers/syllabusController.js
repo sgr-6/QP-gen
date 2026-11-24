@@ -1,98 +1,33 @@
-const { db, admin } = require('../config/firebaseAdmin');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const aiKeyManager = require('../services/aiKeyManager');
-const upload = multer({ dest: 'uploads/' });
+const { extractDocument, parseSyllabus } = require('../services/materialService');
+const { upload, metadata, courseDocId, storeSource, cleanup, respondError } = require('../services/ingestionService');
+const { createGenerationJob, readGenerationJob, resumeGenerationJob, abandonGenerationJob } = require('../services/generationJobService');
 
-const uploadSyllabus = async (req, res) => {
+async function uploadSyllabus(req, res) {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant ID is required' });
-    }
-
-    const file = req.file;
-    const courseTitle = req.body.courseTitle || 'Unknown_Course';
-    const filePath = path.resolve(file.path);
-    const fileExt = path.extname(file.originalname);
-    const fileName = `${tenantId}_${Date.now()}_syllabus${fileExt}`;
-
-    const fileBuffer = fs.readFileSync(filePath);
-
-    // Upload to Supabase Storage
-    const supabase = require('../config/supabaseClient');
-    const { data: bData, error: bError } = await supabase.storage.getBucket('syllabi');
-    if (bError && (bError.message.includes('not found') || bError.message.includes('Bucket not found'))) {
-      await supabase.storage.createBucket('syllabi', { public: true });
-    }
-    await supabase.storage.from('syllabi').upload(`${tenantId}/${fileName}`, fileBuffer, {
-      contentType: file.mimetype,
-      upsert: true
-    });
-
-    // Use Gemini to parse syllabus using File API
-    const uploadedFile = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.files.upload({
-        file: filePath,
-        config: { mimeType: file.mimetype === 'application/pdf' ? 'application/pdf' : 'text/plain' },
-      });
-    });
-
-    const prompt = `Extract the syllabus structure into JSON format. 
-Return ONLY a valid JSON object matching this exact schema:
-{
-  "courseTitle": "string",
-  "modules": [
-    {
-      "moduleNumber": "string (e.g., M1)",
-      "topics": ["topic1", "topic2"]
-    }
-  ]
+    const meta = metadata(req);
+    const syllabus = await parseSyllabus(await extractDocument(req.file.path, req.file.originalname), meta.courseTitle);
+    const source = await storeSource(req.file, 'syllabi', meta.tenantId);
+    const bankId = courseDocId(meta.tenantId, meta.courseTitle);
+    const data = { ...syllabus, ...meta, ...source, uploadedAt: new Date().toISOString() };
+    const generation = await createGenerationJob(bankId, data, meta);
+    res.status(202).json({ message: `Syllabus parsed. Generating ${generation.targetQuestions} L1–L3 review candidates in bounded batches.`, data, generation });
+  } catch (error) { respondError(res, error); }
+  finally { await cleanup(req); }
 }
-Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON string.`;
 
-    const response = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: [
-          { fileData: { fileUri: uploadedFile.uri, mimeType: uploadedFile.mimeType } },
-          prompt
-        ]
-      });
-    });
+async function getGeneration(req, res) {
+  try { res.json(await readGenerationJob(req.params.bankId, req.params.jobId, req.user.tenantId)); }
+  catch (error) { respondError(res, error); }
+}
+async function resumeGeneration(req, res) {
+  try {
+    const job = await resumeGenerationJob(req.params.bankId, req.params.jobId, req.user.tenantId);
+    res.status(202).json(job);
+  } catch (error) { respondError(res, error); }
+}
+async function abandonGeneration(req, res) {
+  try { res.json(await abandonGenerationJob(req.params.bankId, req.params.jobId, req.user.tenantId)); }
+  catch (error) { respondError(res, error); }
+}
 
-    // Cleanup local temp file and Gemini file
-    await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.files.delete({ name: uploadedFile.name });
-    });
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-
-    let resultText = response.text.replace(/^```json/im, '').replace(/```$/im, '').trim();
-    const syllabusJson = JSON.parse(resultText);
-    syllabusJson.tenantId = tenantId;
-    
-    // Save to Firestore
-    const docId = `${tenantId}_${courseTitle.replace(/\s+/g, '_').toLowerCase()}`;
-    await db.collection('syllabi').doc(docId).set(syllabusJson);
-
-    res.json({
-      message: 'Syllabus uploaded and parsed successfully',
-      data: syllabusJson
-    });
-  } catch (error) {
-    console.error("Error in uploadSyllabus:", error);
-    res.status(500).json({ error: 'Failed to process syllabus upload' });
-  }
-};
-
-module.exports = {
-  upload,
-  uploadSyllabus
-};
+module.exports = { upload, uploadSyllabus, getGeneration, resumeGeneration, abandonGeneration };

@@ -7,6 +7,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { motion } from 'framer-motion';
 import ExamSelector from '@/components/ExamSelector';
+import GenerationProgress, { GenerationRef } from '@/components/GenerationProgress';
+import axios from 'axios';
 import { ExamType, EXAM_CONFIGS } from '@/lib/types';
 
 export default function ExamDashboard() {
@@ -28,6 +30,17 @@ export default function ExamDashboard() {
   }, [currentUser, hasRole]);
 
   const [uploadMode, setUploadMode] = useState<'bank' | 'syllabus' | 'notes'>('bank');
+  const [generation, setGeneration] = useState<GenerationRef | null>(null);
+  const [reviewBankId, setReviewBankId] = useState<string | undefined>();
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  useEffect(() => {
+    if (!currentUser) return;
+    const stored = localStorage.getItem(`qpgen_generation_${currentUser.email}`);
+    if (stored) { try { setGeneration(JSON.parse(stored)); } catch { /* Ignore malformed local progress metadata. */ } }
+    const reviewBank = localStorage.getItem(`qpgen_review_bank_${currentUser.email}`);
+    if (reviewBank) setReviewBankId(reviewBank);
+  }, [currentUser]);
 
   const [file, setFile] = useState<File | null>(null);
   const [courseTitle, setCourseTitle] = useState('');
@@ -101,6 +114,17 @@ export default function ExamDashboard() {
     logout();
   };
 
+  const handleBankDeleted = () => {
+    setGeneration(null);
+    setReviewBankId(undefined);
+    setUploadMessage('Subject question bank, syllabus, notes and generation history deleted.');
+    if (currentUser?.email) {
+      localStorage.removeItem(`qpgen_generation_${currentUser.email}`);
+      localStorage.removeItem(`qpgen_review_bank_${currentUser.email}`);
+    }
+    api.get(`/api/question-banks`).then(res => setBanks(res.data || [])).catch(err => console.error('Failed to fetch question banks', err));
+  };
+
   if (loading || !currentUser) {
     return (
       <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -114,6 +138,8 @@ export default function ExamDashboard() {
     if (!file || !courseTitle || !department || !semester || !subjectCode) return;
     
     setUploadStatus('uploading');
+    setUploadError('');
+    setUploadMessage('');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('courseTitle', courseTitle);
@@ -125,20 +151,17 @@ export default function ExamDashboard() {
       const res = await api.post(`/api/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      console.log('Upload success:', res.data);
+      setUploadMessage(`${res.data.totalQuestions} questions stored; ${res.data.reviewRequired} need mapping review. ${res.data.duplicatesSkipped} duplicates skipped.`);
+      setReviewBankId(res.data.bankId);
+      setGeneration(null);
+      localStorage.removeItem(`qpgen_generation_${currentUser.email}`);
+      localStorage.setItem(`qpgen_review_bank_${currentUser.email}`, res.data.bankId);
       setUploadStatus('success');
-      setTimeout(() => {
-        setUploadStatus('idle');
-        setFile(null);
-        setCourseTitle('');
-        setDepartment('');
-        setSemester('');
-        setSubjectCode('');
-      }, 3000);
+      setFile(null);
     } catch (error) {
       console.error('Upload error:', error);
       setUploadStatus('error');
-      setTimeout(() => setUploadStatus('idle'), 3000);
+      setUploadError(axios.isAxiosError(error) ? error.response?.data?.error || error.message : 'Upload failed. Please try again.');
     }
   };
 
@@ -147,6 +170,8 @@ export default function ExamDashboard() {
     if (!file || !courseTitle || !department || !semester || !subjectCode) return;
     
     setUploadStatus('uploading');
+    setUploadError('');
+    setUploadMessage('');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('courseTitle', courseTitle);
@@ -158,20 +183,17 @@ export default function ExamDashboard() {
       const res = await api.post(`/api/syllabus/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      console.log('Syllabus upload success:', res.data);
+      setUploadMessage(`${res.data.data.extraction.topicCount} topics extracted from ${res.data.data.extraction.chunksProcessed} source chunks. Generating ${res.data.generation.targetQuestions} L1–L3 review questions; progress appears below.`);
+      setGeneration(res.data.generation);
+      localStorage.setItem(`qpgen_generation_${currentUser.email}`, JSON.stringify(res.data.generation));
+      setReviewBankId(res.data.generation.bankId);
+      localStorage.setItem(`qpgen_review_bank_${currentUser.email}`, res.data.generation.bankId);
       setUploadStatus('success');
-      setTimeout(() => {
-        setUploadStatus('idle');
-        setFile(null);
-        setCourseTitle('');
-        setDepartment('');
-        setSemester('');
-        setSubjectCode('');
-      }, 3000);
+      setFile(null);
     } catch (error) {
       console.error('Syllabus upload error:', error);
       setUploadStatus('error');
-      setTimeout(() => setUploadStatus('idle'), 3000);
+      setUploadError(axios.isAxiosError(error) ? error.response?.data?.error || error.message : 'Upload failed. Please try again.');
     }
   };
 
@@ -180,6 +202,8 @@ export default function ExamDashboard() {
     if (!file || !courseTitle || !department || !semester || !subjectCode) return;
     
     setUploadStatus('uploading');
+    setUploadError('');
+    setUploadMessage('');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('courseTitle', courseTitle);
@@ -192,20 +216,13 @@ export default function ExamDashboard() {
       const res = await api.post(`/api/notes/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      console.log('Notes upload success:', res.data);
+      setUploadMessage(`Notes processed: ${res.data.data.chunksProcessed}/${res.data.data.totalChunks} chunks, ${res.data.data.keyTopics.length} indexed topics. Future generation uses the most relevant notes excerpts.`);
       setUploadStatus('success');
-      setTimeout(() => {
-        setUploadStatus('idle');
-        setFile(null);
-        setCourseTitle('');
-        setDepartment('');
-        setSemester('');
-        setSubjectCode('');
-      }, 3000);
+      setFile(null);
     } catch (error) {
       console.error('Notes upload error:', error);
       setUploadStatus('error');
-      setTimeout(() => setUploadStatus('idle'), 3000);
+      setUploadError(axios.isAxiosError(error) ? error.response?.data?.error || error.message : 'Upload failed. Please try again.');
     }
   };
 
@@ -251,7 +268,7 @@ export default function ExamDashboard() {
     setErrorMessage('');
     
     try {
-      const res = await api.post(`/api/generate-draft`, 
+      const res = await api.post(`/api/draft/generate-draft`,
         { 
           courseTitle: generateTitle,
           examType: selectedExamType,
@@ -265,7 +282,9 @@ export default function ExamDashboard() {
       setGenerateStatus('success');
     } catch (error: any) {
       console.error('Generation error:', error);
-      setErrorMessage(error.response?.data?.error || 'Failed to generate paper. Check if the course title matches the uploaded database.');
+      const status = error.response?.status;
+      const backendError = error.response?.data?.error;
+      setErrorMessage(backendError || (status ? `Draft generation failed (HTTP ${status}).` : 'Could not reach the backend. Confirm it is running and try again.'));
       setGenerateStatus('error');
       setTimeout(() => setGenerateStatus('idle'), 5000);
     }
@@ -373,7 +392,7 @@ export default function ExamDashboard() {
       if (!draftPaper) return;
       setGenerateStatus('generating');
       
-      const res = await api.post(`/api/download-draft`, { paper: draftPaper }, { responseType: 'blob' });
+      const res = await api.post(`/api/draft/download-draft`, { paper: draftPaper }, { responseType: 'blob' });
       
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
@@ -497,10 +516,10 @@ export default function ExamDashboard() {
                 <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>Data Ingestion</h3>
                 <p style={{ color: 'var(--text-muted)' }}>
                   {uploadMode === 'bank' 
-                    ? "Upload DOCX. The AI normalization layer will automatically infer missing Bloom's Taxonomy and Course Outcomes."
+                    ? "Upload CSV, XLSX, DOCX, PDF or TXT. Context-sensitive Bloom mapping flags uncertainty for review; COs are matched only to actual syllabus outcomes."
                     : uploadMode === 'syllabus' 
-                    ? "Upload Syllabus (PDF or DOCX). AI will extract modules, COs, and Bloom's mapping for paper generation constraints."
-                    : "Upload Course Notes (PDF or DOCX). AI will index the text to help generate diverse and context-aware questions."}
+                    ? "Upload a text PDF, DOCX or TXT syllabus. Generate up to 100 distinct review questions at Bloom levels L1–L3 only, with smaller banks for short syllabi and coverage of every extracted topic. Upload notes first if they should support this generation."
+                    : "Upload course notes one module at a time. All text chunks are summarized and indexed; relevant excerpts support future question generation."}
                 </p>
               </div>
 
@@ -614,14 +633,14 @@ export default function ExamDashboard() {
                           <UploadCloud size={40} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
                           <p style={{ color: 'var(--text-main)', fontWeight: 500 }}>Click to upload or drag and drop</p>
                           <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '8px' }}>
-                            {uploadMode === 'bank' ? 'DOCX/PDF format' : 'PDF or DOCX format'}
+                            {uploadMode === 'bank' ? 'CSV, XLSX, DOCX, text PDF or TXT · maximum 25 MB' : 'Text PDF, DOCX or TXT · maximum 25 MB; scanned PDFs need OCR'}
                           </p>
                         </div>
                       )}
                       <input 
                         type="file" 
                         style={{ display: 'none' }} 
-                        accept={uploadMode === 'bank' ? ".csv, .xlsx, .docx, .pdf" : ".docx, .pdf"}
+                        accept={uploadMode === 'bank' ? '.csv,.xlsx,.docx,.pdf,.txt' : '.docx,.pdf,.txt'}
                         onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
                       />
                     </label>
@@ -645,7 +664,10 @@ export default function ExamDashboard() {
                     </button>
                   </div>
                 </form>
+                {uploadMessage && <p role="status" style={{ color: '#276749', marginTop: 16 }}>{uploadMessage}</p>}
+                {uploadError && <p role="alert" style={{ color: '#C53030', marginTop: 16 }}>{uploadError}</p>}
               </div>
+              <GenerationProgress key={generation?.jobId || reviewBankId || 'none'} generation={generation} bankId={reviewBankId} onBankDeleted={handleBankDeleted} />
             </div>
           )}
 
@@ -1076,7 +1098,7 @@ export default function ExamDashboard() {
                       <div key={draft.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setSelectedDraft(draft)}>
                         <div>
                           <h4 style={{ fontSize: '18px', fontWeight: 600 }}>{draft.courseTitle}</h4>
-                          <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Created: {new Date(draft.createdAt || Date.now()).toLocaleDateString()} | Status: {draft.status}</p>
+                          <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Created: {draft.createdAt ? new Date(draft.createdAt).toLocaleDateString() : '—'} | Status: {draft.status}</p>
                         </div>
                         <button className="btn-secondary" style={{ padding: '8px 16px' }}>Review</button>
                       </div>
@@ -1227,7 +1249,7 @@ export default function ExamDashboard() {
                       <div key={draft.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setSelectedDraft(draft)}>
                         <div>
                           <h4 style={{ fontSize: '18px', fontWeight: 600 }}>{draft.courseTitle}</h4>
-                          <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Created: {new Date(draft.createdAt || Date.now()).toLocaleDateString()}</p>
+                          <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Created: {draft.createdAt ? new Date(draft.createdAt).toLocaleDateString() : '—'}</p>
                         </div>
                         <button className="btn-secondary" style={{ padding: '8px 16px' }}>View & Release</button>
                       </div>

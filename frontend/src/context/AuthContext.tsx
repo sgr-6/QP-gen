@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: 'professor' | 'hod';
   tenantId?: string;
+  userId?: string;
   token?: string;
 }
 

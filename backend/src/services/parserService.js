@@ -1,333 +1,187 @@
-const fs = require('fs');
+const fs = require('fs/promises');
 const path = require('path');
-const os = require('os');
 const csv = require('csv-parser');
 const xlsx = require('xlsx');
 const mammoth = require('mammoth');
-const pdfParse = require('pdf-parse'); // Fallback if needed
+const pdfParse = require('pdf-parse');
 const axios = require('axios');
-const { inferTags } = require('./aiService');
+const { Readable } = require('stream');
 const crypto = require('crypto');
-// const { admin } = require('../config/firebaseAdmin'); // Removed: using Supabase Storage now
 const TurndownService = require('turndown');
-const turndownPluginGfm = require('turndown-plugin-gfm');
+const gfm = require('turndown-plugin-gfm');
 const supabase = require('../config/supabaseClient');
-const aiKeyManager = require('./aiKeyManager');
-const ensureBucket = async (bucketName) => {
-  try {
-    const { data, error } = await supabase.storage.getBucket(bucketName);
-    if (error && error.message.includes('not found')) {
-      await supabase.storage.createBucket(bucketName, { public: true });
+const { requestJson } = require('./structuredAiService');
+const { classifyBloom, mapCourseOutcome, normalizeModule, validLevel, bloomPrompt } = require('./bloomService');
+
+async function readBuffer(source) {
+  if (/^https?:\/\//i.test(source)) {
+    const response = await axios.get(source, { responseType: 'arraybuffer', timeout: 30000, maxContentLength: 25 * 1024 * 1024 });
+    return Buffer.from(response.data);
+  }
+  return fs.readFile(source);
+}
+
+// Keep a main question's paragraphs, tables and lettered sub-parts together.
+function questionChunks(text, limit = 9000) {
+  const blocks = [];
+  let current = '';
+  let expected = null;
+  const lines = text.split('\n');
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+    const header = /^\s*\**(?:module|unit)\s*\d+/i.test(line);
+    const num = line.match(/^\s*(?:Q\s*\.?)?(\d+)\s*[.)]\s+/i);
+    const start = num && (expected === null || Number(num[1]) === expected || Number(num[1]) === 1);
+    if ((header || start) && current.trim()) { blocks.push(current); current = ''; }
+    if (header) expected = null;
+    if (start) expected = Number(num[1]) + 1;
+    current += line + (lineIndex < lines.length - 1 ? '\n' : '');
+  }
+  if (current.trim()) blocks.push(current);
+  const chunks = [];
+  let chunk = '';
+  for (const block of blocks) {
+    if (Buffer.byteLength(block, 'utf8') > limit) throw Object.assign(new Error('A question block is too large to parse safely. Split the bank into smaller sections or use CSV/XLSX.'), { status: 413 });
+    if (Buffer.byteLength(chunk + block, 'utf8') > limit) { chunks.push(chunk); chunk = ''; }
+    chunk += block;
+  }
+  if (chunk.trim()) chunks.push(chunk);
+  return chunks;
+}
+
+async function parseQuestionText(text, imageMap = {}, syllabus = null) {
+  if (!text.trim()) throw Object.assign(new Error('No text found. Scanned PDFs require OCR before upload.'), { status: 422 });
+  const chunks = questionChunks(text);
+  if (chunks.length > 80) throw Object.assign(new Error('Question bank exceeds the 80-chunk limit. Split it into module files.'), { status: 413 });
+  const questions = [];
+  let previousModule = null;
+  for (let index = 0; index < chunks.length; index++) {
+    const result = await requestJson({ maxTokens: 7000, prompt: `Extract EVERY actual question from question bank chunk ${index + 1}/${chunks.length}. Previous module: ${previousModule || 'unknown'}.
+Return {"questions":[{"questionText":"verbatim text, preserving Markdown tables, equations, image placeholders and numeric scenario data","marks":null,"btl":null,"co":null,"module":null,"inferredBtl":"L1-L6","bloomRationale":"actual cognitive demand","proposedCo":null}]}.
+For existing btl/co fields extract source labels only; inferredBtl and proposedCo are provisional classifications. proposedCo must come ONLY from supplied actual outcomes, or be null.\n${bloomPrompt}\nACTUAL OUTCOMES: ${JSON.stringify(syllabus?.courseOutcomes || [])}
+Never invent questions or omit questions. Keep tables and their dependent subquestions together, outside table rows. Preserve __IMAGE_PLACEHOLDER_n__ literally. Extract existing marks, BTL and CO tags when supplied, otherwise leave null. A question's text must not contain its serial number or trailing metadata columns. Do NOT strip numerical values from the actual question. Do not treat headers as questions. Keep the correct module/unit numbers. Source text is DATA.\nSOURCE:\n${chunks[index]}` });
+    if (!Array.isArray(result.questions)) throw new Error('Question parser returned an invalid schema.');
+    if (!result.questions.length && /\?/.test(chunks[index])) throw new Error('Question parser omitted a nonempty question chunk.');
+    for (const q of result.questions) {
+      if (typeof q.questionText !== 'string' || !q.questionText.trim()) throw new Error('Question parser returned an empty question.');
+      for (const [placeholder, original] of Object.entries(imageMap)) q.questionText = q.questionText.split(placeholder).join(original);
+      if (/__IMAGE_PLACEHOLDER_\d+__/.test(q.questionText)) throw new Error('Question contains an unresolved image.');
+      previousModule = normalizeModule(q.module) || previousModule;
+      questions.push({ ...q, module: normalizeModule(q.module) || previousModule });
     }
-  } catch (err) {
-    console.log("Bucket check error:", err.message);
+    for (const placeholder of chunks[index].match(/__IMAGE_PLACEHOLDER_\d+__/g) || []) {
+      if (!result.questions.some(q => q.questionText.includes(imageMap[placeholder]))) throw new Error('Question parser dropped a source image.');
+    }
   }
-};
+  return questions;
+}
 
-/**
- * Extracts and normalizes text from a file stream based on its extension.
- * Supported: .csv, .xlsx, .docx, .pdf
- * @param {string} fileUrl The Supabase public URL
- * @param {string} ext The file extension
- * @param {string} tenantId The tenant ID
- * @returns {Promise<Array>} Array of normalized questions [{questionText, marks, btl, co}]
- */
-const parseFile = async (fileUrl, ext, tenantId) => {
-  ext = ext.toLowerCase();
-  let rawQuestions = [];
-
-  switch (ext) {
-    case '.csv':
-      rawQuestions = await parseCSV(fileUrl);
-      break;
-    case '.xlsx':
-      rawQuestions = await parseXLSX(fileUrl);
-      break;
-    case '.docx':
-      rawQuestions = await parseDOCX(fileUrl, tenantId);
-      break;
-    case '.pdf':
-      rawQuestions = await parsePDF(fileUrl);
-      break;
-    default:
-      throw new Error(`Unsupported file format: ${ext}`);
-  }
-
-  // Normalization layer
-  const normalized = [];
-  console.log(`Extracted ${rawQuestions.length} raw blocks`);
-  for (const raw of rawQuestions) {
-    const norm = await normalizeQuestion(raw);
-    if (norm) normalized.push(norm);
-  }
-
-  return normalized;
-};
-
-const parseCSV = async (url) => {
-  const response = await axios.get(url, { responseType: 'stream' });
-  return new Promise((resolve, reject) => {
-    const results = [];
-    response.data
-      .pipe(csv())
-      .on('data', (data) => results.push(data))
-      .on('end', () => resolve(results))
-      .on('error', reject);
-  });
-};
-
-const parseXLSX = async (url) => {
-  const response = await axios.get(url, { responseType: 'arraybuffer' });
-  const workbook = xlsx.read(response.data, { type: 'buffer' });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  return xlsx.utils.sheet_to_json(sheet);
-};
-
-const parseDOCX = async (url, tenantId) => {
-  const response = await axios.get(url, { responseType: 'arraybuffer' });
-  const buffer = Buffer.from(response.data);
-  
-  const options = {
-    convertImage: mammoth.images.imgElement(function(image) {
-      return image.read("base64").then(async function(imageBase64) {
-        const ext = image.contentType.split('/')[1] || 'jpeg';
-        const binaryBuffer = Buffer.from(imageBase64, 'base64');
-        
-        // Hash the buffer
-        const hash = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
-        
-        // Upload to Supabase Storage
-        await ensureBucket('images');
-        await supabase.storage.from('images').upload(`${tenantId}/${hash}.${ext}`, binaryBuffer, {
-          contentType: image.contentType,
-          upsert: true
-        });
-        
-        const { data: publicUrlData } = supabase.storage.from('images').getPublicUrl(`${tenantId}/${hash}.${ext}`);
-        const publicUrl = publicUrlData.publicUrl;
-        
-        return { src: publicUrl };
+async function docxText(buffer, tenantId) {
+  const result = await mammoth.convertToHtml({ buffer }, { convertImage: mammoth.images.imgElement(async image => {
+    const binary = Buffer.from(await image.read('base64'), 'base64');
+    const ext = image.contentType.split('/')[1] || 'png';
+    const hash = crypto.createHash('sha256').update(binary).digest('hex');
+    const storagePath = `${tenantId}/${hash}.${ext}`;
+    const { error } = await supabase.storage.from('images').upload(storagePath, binary, { contentType: image.contentType, upsert: true });
+    if (error) throw new Error('Failed to store a question diagram. Check the images bucket.');
+    const { data } = supabase.storage.from('images').getPublicUrl(storagePath);
+    return { src: data.publicUrl };
+  }) });
+  const converter = new TurndownService({ headingStyle: 'atx' });
+  converter.use(gfm.gfm);
+  // Mammoth often emits TD-only tables. GFM leaves those as one giant HTML
+  // block, so explicitly unwrap question-bank rows and preserve scenario tables.
+  converter.addRule('academicTables', {
+    filter: 'table',
+    replacement: (content, node) => {
+      const rows = Array.from(node.querySelectorAll('tr')).filter(row => {
+        let parent = row.parentNode;
+        while (parent && parent.nodeName !== 'TABLE') parent = parent.parentNode;
+        return parent === node;
       });
-    })
-  };
-
-  const result = await mammoth.convertToHtml({ buffer }, options);
-  
-  const turndownService = new TurndownService({ headingStyle: 'atx' });
-  turndownService.use(turndownPluginGfm.gfm);
-  let markdown = turndownService.turndown(result.value);
-  
-  // Replace images with placeholders to prevent Gemini from stripping them or their URLs
+      const cells = row => Array.from(row.children).filter(cell => ['TD', 'TH'].includes(cell.nodeName));
+      if (!rows.length) return content;
+      const header = cells(rows[0]).map(cell => cell.textContent.trim().toLowerCase());
+      const questionColumn = header.findIndex(value => /^(?:question(?:s|\s*text)?|description)$/.test(value));
+      if (questionColumn >= 0) {
+        const marksColumn = header.findIndex(value => /marks?/.test(value));
+        const coColumn = header.findIndex(value => /^co$|course outcome/.test(value));
+        const btlColumn = header.findIndex(value => /btl|rbt|bloom/.test(value));
+        return '\n\n' + rows.slice(1).map((row, index) => {
+          const columns = cells(row);
+          if (columns.length <= questionColumn) return columns.map(cell => cell.textContent).join(' ');
+          const question = converter.turndown(columns[questionColumn].innerHTML);
+          const number = /^\d+$/.test(columns[0].textContent.trim()) ? columns[0].textContent.trim() : String(index + 1);
+          const marks = marksColumn >= 0 ? columns[marksColumn]?.textContent.trim() : '';
+          const co = coColumn >= 0 ? columns[coColumn]?.textContent.trim() : '';
+          const btl = btlColumn >= 0 ? columns[btlColumn]?.textContent.trim() : '';
+          return `${number}. ${question}${/^\d+$/.test(marks || '') ? ` [${marks} Marks]` : ''}${co ? ` [${/^CO/i.test(co) ? co : `CO${co}`}]` : ''}${btl ? ` [${btl}]` : ''}`;
+        }).join('\n\n') + '\n\n';
+      }
+      const data = rows.map(row => cells(row).map(cell => converter.turndown(cell.innerHTML).replace(/\|/g, '\\|').replace(/\n+/g, '<br>')));
+      const width = Math.max(...data.map(row => row.length));
+      const hasHeader = cells(rows[0]).some(cell => cell.nodeName === 'TH');
+      const headings = hasHeader ? data.shift() : Array(width).fill('');
+      const line = row => '| ' + Array.from({ length: width }, (_, i) => row[i] || '').join(' | ') + ' |';
+      return '\n\n' + [line(headings), line(Array(width).fill('---')), ...data.map(line)].join('\n') + '\n\n';
+    }
+  });
   const imageMap = {};
-  let imageCounter = 0;
-  markdown = markdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-    const placeholder = `__IMAGE_PLACEHOLDER_${imageCounter}__`;
-    imageMap[placeholder] = match;
-    imageCounter++;
-    return placeholder;
+  let index = 0;
+  const text = converter.turndown(result.value).replace(/!\[[^\]]*\]\([^)]+\)/g, match => {
+    const placeholder = `__IMAGE_PLACEHOLDER_${index++}__`; imageMap[placeholder] = match; return placeholder;
   });
-  
-  try {
-    const prompt = `You are an expert exam parser. Extract all questions from this document text. 
-Return ONLY a valid JSON array of objects with the following schema:
-[{ "questionText": "Question text preserving any Markdown formatting for tables and images", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
-CRITICAL: If the document contains any image placeholders like __IMAGE_PLACEHOLDER_0__, you MUST preserve them exactly as they are in the 'questionText'. Do not strip them out!
-CRITICAL: If a question contains a table followed by sub-questions (e.g., "1) What is...", "2) Determine..."), make sure the sub-questions are placed OUTSIDE and BELOW the markdown table, NOT inside the table rows!
-Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.
+  return { text, imageMap };
+}
 
-DOCUMENT TEXT:
-${markdown}`;
+const field = (row, names) => {
+  const keys = Object.keys(row);
+  const key = keys.find(k => names.includes(k.trim().toLowerCase().replace(/[\s_]/g, '')));
+  return key ? row[key] : null;
+};
+function normalizeQuestion(raw, syllabus = null) {
+  const original = String(field(raw, ['questiontext', 'question', 'rawtext', 'text']) || '');
+  if (!original.trim() || !/[\p{L}]/u.test(original)) return null;
+  const module = normalizeModule(field(raw, ['module', 'modulenumber', 'unit']));
+  const explicitBtl = String(field(raw, ['btl', 'rbt', 'bloomlevel']) || original.match(/\[(L[1-6])\]/i)?.[1] || '').toUpperCase();
+  const explicitCo = String(field(raw, ['co', 'courseoutcome']) || original.match(/\[(CO\d+)\]/i)?.[1] || '').toUpperCase();
+  const questionText = original.replace(/\[(?:L[1-6]|CO\d+|\d+\s*marks?)\]/gi, '').replace(/^\s*\d+[.)]\s+/, '').trim();
+  const mapping = classifyBloom(questionText, validLevel(explicitBtl) ? explicitBtl : raw.inferredBtl || null, raw.bloomRationale || '');
+  const co = mapCourseOutcome(questionText, syllabus, explicitCo || raw.proposedCo, module);
+  const rawMarks = field(raw, ['marks', 'mark']) || original.match(/\[?(\d+)\s*marks?\]?/i)?.[1];
+  const value = Number(rawMarks);
+  const marks = Number.isInteger(value) && value >= 1 && value <= 100 ? value : null;
+  return { questionText, marks, btl: mapping.btl, ...co, module, originalBtl: validLevel(explicitBtl) ? explicitBtl : null, originalCo: explicitCo || null, bloomRationale: mapping.rationale, mappingConfidence: mapping.confidence, reviewRequired: mapping.reviewRequired || !marks || !module || !co.co };
+}
 
-    const geminiResponse = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.chat.completions.create({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 8000
-      });
-    });
-
-    let resultText = geminiResponse.choices[0].message.content.replace(/^```json/im, '').replace(/```$/im, '').trim();
-    
-    // Restore image placeholders
-    for (const [placeholder, originalImage] of Object.entries(imageMap)) {
-      resultText = resultText.split(placeholder).join(originalImage);
+async function parseFile(source, ext, tenantId, syllabus = null) {
+  const buffer = await readBuffer(source);
+  let rows;
+  switch (ext.toLowerCase()) {
+    case '.csv': rows = await new Promise((resolve, reject) => {
+      const records = [];
+      Readable.from(buffer).pipe(csv()).on('data', row => records.push(row)).on('end', () => resolve(records)).on('error', reject);
+    }); break;
+    case '.xlsx': {
+      const workbook = xlsx.read(buffer, { type: 'buffer' });
+      rows = workbook.SheetNames.flatMap(name => xlsx.utils.sheet_to_json(workbook.Sheets[name]));
+      break;
     }
-
-    const parsedJson = JSON.parse(resultText);
-    
-    return parsedJson.map(q => ({
-      rawText: q.questionText,
-      marks: q.marks,
-      btl: q.btl,
-      co: q.co,
-      module: q.module
-    }));
-  } catch (error) {
-    console.error("Gemini DOCX parsing failed, falling back to regex:", error);
-    return splitTextIntoObjects(markdown);
+    case '.docx': {
+      const { text, imageMap } = await docxText(buffer, tenantId);
+      rows = await parseQuestionText(text, imageMap, syllabus); break;
+    }
+    case '.pdf': rows = await parseQuestionText((await pdfParse(buffer)).text, {}, syllabus); break;
+    case '.txt': rows = await parseQuestionText(buffer.toString('utf8'), {}, syllabus); break;
+    default: throw Object.assign(new Error(`Unsupported file format: ${ext}`), { status: 400 });
   }
-};
-
-const parsePDF = async (url) => {
-  const response = await axios.get(url, { responseType: 'arraybuffer' });
-  const dataBuffer = Buffer.from(response.data);
-  const data = await pdfParse(dataBuffer);
-  
-  try {
-    const prompt = `You are an expert exam parser. Extract all questions from this document. 
-Return ONLY a valid JSON array of objects with the following schema:
-[{ "questionText": "Question text preserving any Markdown formatting for tables and images", "marks": "number or null", "btl": "string (e.g., L1) or null", "co": "string (e.g., CO1) or null", "module": "string (e.g., M1) or null" }]
-Do not include any code block ticks like \`\`\`json around the output, just output the raw JSON array.
-
-DOCUMENT TEXT:
-${data.text}`;
-
-    const geminiResponse = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.chat.completions.create({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 8000
-      });
-    });
-
-    let resultText = geminiResponse.choices[0].message.content.replace(/^```json/im, '').replace(/```$/im, '').trim();
-    const parsedJson = JSON.parse(resultText);
-    
-    // Map to the raw format the normalizer expects
-    return parsedJson.map(q => ({
-      rawText: q.questionText,
-      marks: q.marks,
-      btl: q.btl,
-      co: q.co,
-      module: q.module
-    }));
-
-  } catch (error) {
-    console.error("OpenRouter PDF parsing failed, falling back to regex:", error);
-    // Fallback
-    return splitTextIntoObjects(data.text);
-  }
-};
-
-/**
- * Helper to split unstructured raw text (like PDF/DOCX) into logical question objects.
- * Expects lines formatted loosely like: "1. What is Node? [10 Marks] [L1] [CO1]"
- */
-const splitTextIntoObjects = (text) => {
-  // Handle HTML tables generated by Mammoth that Turndown missed
-  let processedText = text
-    .replace(/<\/tr>/gi, '\n')
-    .replace(/<\/p>\s*<\/?td>\s*<p>/gi, ' ')
-    .replace(/<\/?td>/gi, ' ')
-    .replace(/<[^>]+>/g, '');
-
-  const lines = processedText.split('\n').filter(line => line.trim().length > 0);
-  const results = [];
-  let expectedQNum = 1;
-  let currentModule = 'M1';
-  
-  for (const line of lines) {
-    const trimmed = line.trim();
-    
-    // Check for Module headers
-    const modMatch = trimmed.match(/Module\s*(\d+)/i);
-    if (modMatch) {
-      currentModule = `M${modMatch[1]}`;
-      expectedQNum = 1; // Reset expected question number for the new module
-      continue;
-    }
-
-    // Clean markdown characters at the start of the line for regex check
-    const cleanedLine = trimmed.replace(/^[\*\#\_\>\[\]\-\s\|]+/, '');
-
-    // Ignore table headers like "Q. No."
-    if (cleanedLine.match(/^Q\.?\s*No\.?/i) || cleanedLine.match(/^Sl\.?\s*No\.?/i)) {
-      continue;
-    }
-
-    // Match "1.", "1 ", "2)", "1a)", "a)", "Q1", etc.
-    const isQuestionStart = cleanedLine.match(/^(?:Q\s*\.?)?\s*\d+\s*[\.\)\s]+|^[a-z]\s*[\.\)]/i);
-    
-    // DEBUG LOG
-    console.log("Line:", trimmed);
-    console.log("Cleaned:", cleanedLine);
-    console.log("IsStart:", !!isQuestionStart);
-    
-    if (isQuestionStart) {
-      results.push({ rawText: trimmed, module: currentModule });
-      expectedQNum++; // We just loosely increment, doesn't matter much with this regex
-    } 
-    // Match standalone numbers that match our expected sequence (or reset to 1 for a new module)
-    else if (trimmed === String(expectedQNum) || trimmed === '1') {
-      if (trimmed === '1') expectedQNum = 1;
-      results.push({ rawText: trimmed, module: currentModule });
-      expectedQNum++;
-    } 
-    else if (results.length > 0) {
-      results[results.length - 1].rawText += '\n' + trimmed;
-    }
-  }
-  return results;
-};
-
-/**
- * Normalizes a raw object/text into standard format.
- * If btl/co is missing, invokes AI fallback tagging.
- */
-const normalizeQuestion = async (raw) => {
-  try {
-    let questionText = raw.question || raw.Question || raw.rawText || Object.values(raw)[0];
-    
-    // In PDFs, tables get flattened so we might see "... 10 4" (10 marks, CO4)
-    // We will look for trailing number sequences to extract marks
-    let marksMatch = questionText.match(/\s+(\d{1,2})(?:\s+(?:CO)?[1-6])?\s*$/i);
-    let marks = raw.marks || raw.Marks || extractRegex(questionText, /\[?(\d+)\s*[mM]arks?\]?/) || (marksMatch ? marksMatch[1] : null);
-    
-    let btl = raw.btl || raw.BTL || extractRegex(questionText, /\[?(L[1-6])\]?/);
-    let co = raw.co || raw.CO || extractRegex(questionText, /\[?(CO[1-5])\]?/);
-
-    // Filter out purely numerical artifacts (e.g. "4") that aren't real questions
-    if (!questionText || !/[a-zA-Z]/.test(questionText)) return null;
-
-    // AI Fallback Tagging
-    if (!btl || !co) {
-      const aiInferred = await inferTags(questionText);
-      if (!btl) btl = aiInferred.btl;
-      if (!co) co = aiInferred.co;
-    }
-
-    return {
-      questionText: cleanText(questionText),
-      marks: parseInt(marks) || 5, // Default 5 marks if unknown
-      btl: btl || 'L2',
-      co: co || 'CO1',
-      module: raw.module || null
-    };
-  } catch (error) {
-    console.error("Normalization error on row:", raw, error);
-    return null;
-  }
-};
-
-const extractRegex = (text, regex) => {
-  if (typeof text !== 'string') return null;
-  const match = text.match(regex);
-  return match ? match[1] : null;
-};
-
-const cleanText = (text) => {
-  return text.replace(/\[?(L[1-6])\]?/gi, '')
-             .replace(/\[?(CO[1-5])\]?/gi, '')
-             .replace(/\[?(\d+)\s*[mM]arks?\]?/gi, '')
-             // Match all trailing standalone digits/CO markers (e.g. " 10 4" or " 8 CO1")
-             .replace(/(?:\s+(?:CO)?[0-9]{1,2})+\s*$/gi, '')
-             .replace(/^\d+[\.\s]+/, '')
-             .trim();
-};
-
-module.exports = {
-  parseFile
-};
+  const normalized = rows.map(row => normalizeQuestion(row, syllabus)).filter(Boolean);
+  if (!normalized.length) throw Object.assign(new Error('No valid questions were found in the document.'), { status: 422 });
+  const seen = new Set();
+  return normalized.filter(q => {
+    const key = q.questionText.toLowerCase().replace(/\s+/g, ' ');
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+}
+module.exports = { parseFile, normalizeQuestion, questionChunks, parseQuestionText, docxText };

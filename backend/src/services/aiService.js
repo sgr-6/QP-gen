@@ -1,4 +1,6 @@
 const aiKeyManager = require('./aiKeyManager');
+const { requestJson, models } = require('./structuredAiService');
+const { classifyBloom, mapCourseOutcome, bloomPrompt } = require('./bloomService');
 let pipeline = null;
 
 // Initialize transformers.js pipeline lazily
@@ -15,41 +17,10 @@ const initPipeline = async () => {
  * @param {string} questionText 
  * @returns {Promise<{btl: string, co: string}>}
  */
-const inferTags = async (questionText) => {
-  const prompt = `
-    You are an expert in Outcome-Based Education (OBE) for Engineering.
-    Analyze the following exam question and classify it into:
-    1. Bloom's Taxonomy Level (BTL): Must be one of L1, L2, L3, L4, L5, L6.
-       (e.g., Define/List = L1, Explain = L2, Apply/Calculate = L3, Analyze = L4, Evaluate = L5, Create/Design = L6).
-    2. Course Outcome (CO): Must be one of CO1, CO2, CO3, CO4, CO5 based on typical computer science/engineering subjects. 
-       If unsure, pick the most likely one based on topic depth (e.g. basics = CO1, advanced = CO5).
-
-    Question: "${questionText}"
-
-    Output ONLY a valid JSON object in this format, nothing else:
-    {"btl": "L2", "co": "CO1"}
-  `;
-
-  try {
-    const response = await aiKeyManager.executeWithAI(async (ai) => {
-      return await ai.chat.completions.create({
-        model: 'google/gemini-2.5-flash', // Default fast model on OpenRouter
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 8000
-      });
-    });
-    
-    const text = response.choices[0].message.content;
-    const parsed = JSON.parse(text);
-    return {
-      btl: parsed.btl || 'L2',
-      co: parsed.co || 'CO1'
-    };
-  } catch (error) {
-    console.error("Error inferring tags for:", questionText.substring(0, 50), "...", error.message);
-    return { btl: "L2", co: "CO1" };
-  }
+const inferTags = async (questionText, syllabus = null, module = null) => {
+  const parsed = await requestJson({ maxTokens: 600, prompt: `Classify the actual cognitive demand and map ONLY to explicit supplied course outcomes. Return {"btl":"L1-L6", "co":null, "rationale":"reason for the cognitive demand"}. If no outcome is supported, CO must be null.\n${bloomPrompt}\nQUESTION: ${questionText}\nOUTCOMES: ${JSON.stringify(syllabus?.courseOutcomes || [])}` });
+  const mapping = classifyBloom(questionText, parsed.btl, parsed.rationale);
+  return { ...mapping, ...mapCourseOutcome(questionText, syllabus, parsed.co, module) };
 };
 
 /**
@@ -64,7 +35,7 @@ const generateEmbedding = async (text) => {
     return Array.from(output.data);
   } catch (error) {
     console.error("Error generating local embedding:", error.message);
-    return Array(384).fill(0.0);
+    return null; // Never represent an embedding failure as a valid zero vector.
   }
 };
 
@@ -80,8 +51,8 @@ const checkImageSanity = async (base64Image, mimeType) => {
   try {
     const response = await aiKeyManager.executeWithAI(async (ai) => {
       return await ai.chat.completions.create({
-        model: 'google/gemini-2.5-flash',
-        max_tokens: 8000,
+        model: models.generation,
+        max_tokens: 16,
         messages: [
           {
             role: 'user',

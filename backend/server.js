@@ -4,6 +4,7 @@ const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { randomInt } = require('node:crypto');
 
 dotenv.config();
 
@@ -28,32 +29,20 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-app.post(['/auth/logout', '/api/auth/logout'], (req, res) => {
-  res.clearCookie('jwt', {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none'
-  });
-  res.json({ message: 'Logged out successfully' });
-});
-
 // Mount modular routes
 const uploadRoutes = require('./src/routes/upload');
 const draftRoutes = require('./src/routes/draft');
 
 
 app.use('/api', uploadRoutes);
+app.use('/api/draft', draftRoutes);
 app.use('/api', draftRoutes);
 app.use('/api/syllabus', require('./src/routes/syllabus'));
 app.use('/api/template', require('./src/routes/template'));
 app.use('/api/notes', require('./src/routes/notes'));
 
 
-// Generate 6-digit OTP
-const generateOTP = () => {
-  if (!process.env.RESEND_API_KEY) return '123456';
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
+const generateOTP = () => randomInt(100000, 1000000).toString();
 
 // Route: Generate OTP
 app.post(['/auth/otp/generate', '/api/auth/otp/generate'], async (req, res) => {
@@ -86,13 +75,13 @@ app.post(['/auth/otp/generate', '/api/auth/otp/generate'], async (req, res) => {
 
     if (otpError) throw otpError;
 
-    // Send via Resend
-    await sendOTPEmail(email, otp);
+    await sendOTPEmail(email, otp, expiresAt);
 
     res.json({ message: 'OTP generated and sent successfully' });
   } catch (error) {
     console.error('Error generating OTP:', error.message);
-    res.status(500).json({ error: 'Failed to generate OTP' });
+    const status = [429, 502, 503].includes(error.status) ? error.status : 500;
+    res.status(status).json({ error: status === 500 ? 'Failed to generate OTP' : error.message });
   }
 });
 
@@ -173,6 +162,13 @@ app.post(['/auth/logout', '/api/auth/logout'], (req, res) => {
 // Route: Session check (returns current user from JWT)
 app.get(['/auth/me', '/api/auth/me'], authenticate, (req, res) => {
   res.json({ user: req.user });
+});
+
+// Return actionable JSON for upload validation failures instead of HTML.
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : error.status || 500;
+  res.status(status).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Upload exceeds the 25 MB limit.' : error.message || 'Request failed.' });
 });
 
 const PORT = process.env.PORT || 5000;

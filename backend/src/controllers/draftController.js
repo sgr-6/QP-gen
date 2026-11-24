@@ -59,6 +59,10 @@ const saveDraft = async (req, res) => {
   }
 };
 
+// Firestore Timestamps serialize as {_seconds,...}; send ISO strings the UI can parse.
+const toIso = value => (value && typeof value.toDate === 'function' ? value.toDate().toISOString() : value ?? null);
+const serializeDraft = (id, data) => ({ id, ...data, createdAt: toIso(data.createdAt), updatedAt: toIso(data.updatedAt), embargoTimestamp: toIso(data.embargoTimestamp) });
+
 const listDrafts = async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
@@ -85,7 +89,7 @@ const listDrafts = async (req, res) => {
           console.error("Failed to decrypt paper", e);
         }
       }
-      return { id: doc.id, ...data };
+      return serializeDraft(doc.id, data);
     });
 
     if (role === 'hod') {
@@ -99,7 +103,7 @@ const listDrafts = async (req, res) => {
         if (data.paper && typeof data.paper === 'string') {
           try { data.paper = decryptData(data.paper); } catch(e) {}
         }
-        return { id: doc.id, ...data };
+        return serializeDraft(doc.id, data);
       });
       const allDrafts = [...drafts, ...ownDrafts];
       const uniqueDrafts = Array.from(new Map(allDrafts.map(item => [item.id, item])).values());
@@ -112,6 +116,29 @@ const listDrafts = async (req, res) => {
     res.status(500).json({ error: 'Failed to list drafts' });
   }
 };
+
+// Allowed workflow moves: { fromStatus: { toStatus: [roles] } }.
+// 'released' is reachable only through releaseDraft, which hashes and embargoes the paper.
+const STATUS_TRANSITIONS = {
+  draft: { pending_hod_approval: ['professor', 'hod'] },
+  pending_hod_approval: { pending_coe_release: ['hod'], draft: ['hod'] },
+  pending_coe_release: { draft: ['controller_of_exams'], pending_hod_approval: ['controller_of_exams'] }
+};
+
+function statusTransitionError(draftData, nextStatus, user) {
+  const current = draftData.status || 'draft';
+  const allowedRoles = STATUS_TRANSITIONS[current]?.[nextStatus];
+  if (!allowedRoles) return { status: 400, error: `Cannot move a draft from "${current}" to "${nextStatus}".` };
+  if (user.role !== 'super_admin' && !allowedRoles.includes(user.role)) return { status: 403, error: 'Insufficient permissions for this status change.' };
+  const isCreator = draftData.createdBy === user.userId;
+  if (nextStatus === 'pending_hod_approval' && current === 'draft' && !isCreator && user.role !== 'super_admin') {
+    return { status: 403, error: 'Only the creator can submit this draft for review.' };
+  }
+  if (nextStatus === 'pending_coe_release' && isCreator) {
+    return { status: 403, error: 'Maker-Checker violation: You cannot approve a draft you created.' };
+  }
+  return null;
+}
 
 const updateDraftStatus = async (req, res) => {
   try {
@@ -127,9 +154,8 @@ const updateDraftStatus = async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized tenant access' });
     }
 
-    if (status === 'pending_coe_release' && draftData.createdBy === req.user.userId) {
-      return res.status(403).json({ error: 'Maker-Checker violation: You cannot approve a draft you created.' });
-    }
+    const transitionError = statusTransitionError(draftData, status, req.user);
+    if (transitionError) return res.status(transitionError.status).json({ error: transitionError.error });
 
     await draftRef.update({
       status,
@@ -190,6 +216,12 @@ const releaseDraft = async (req, res) => {
     
     if (draft.data().tenantId !== req.user.tenantId) {
       return res.status(403).json({ error: 'Unauthorized tenant access' });
+    }
+    if (draft.data().status !== 'pending_coe_release') {
+      return res.status(409).json({ error: 'Only HOD-approved drafts awaiting COE release can be released.' });
+    }
+    if (Number.isNaN(new Date(embargoTimestamp).getTime())) {
+      return res.status(400).json({ error: 'Embargo timestamp is invalid' });
     }
 
     // Decrypt the paper to hash it
