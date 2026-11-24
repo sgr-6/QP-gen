@@ -63,7 +63,8 @@ describe('Bloom cognitive-demand mapping', () => {
   test.each([
     ['M1', 'M1'], ['1', 'M1'], [1, 'M1'], ['Unit 2', 'M2'],
     ['module 03', 'M3'], ['m2', 'M2'], [null, null], ['', null],
-    ['M0', null], ['Unit -2', null], ['CO1', null], ['M1 extra', null]
+    ['M0', null], ['Unit -2', null], ['CO1', null], ['M1 extra', null],
+    ['MODULE - 1', 'M1'], ['Module-4', 'M4'], ['MODULE 2', 'M2'], ['Unit: 5', 'M5'], [' Module 3 ', 'M3']
   ])('normalizes module %p to %p', (input, expected) => {
     expect(normalizeModule(input)).toBe(expected);
   });

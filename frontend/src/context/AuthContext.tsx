@@ -43,9 +43,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           // Attempt to verify with the backend
           const res = await api.get('/auth/me');
           if (res.data && res.data.user) {
-            // Keep the user state in sync with the backend
-            setCurrentUser(res.data.user);
-            localStorage.setItem("qpgen_user", JSON.stringify(res.data.user));
+            // Keep the user state in sync with the backend, but keep the Bearer token:
+            // browsers that block the cross-site cookie depend on it for every request.
+            const { token } = JSON.parse(storedUser) as User;
+            const user = { ...res.data.user, token };
+            setCurrentUser(user);
+            localStorage.setItem("qpgen_user", JSON.stringify(user));
           } else {
             throw new Error('Invalid session');
           }

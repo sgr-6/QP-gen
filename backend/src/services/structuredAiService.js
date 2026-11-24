@@ -2,7 +2,7 @@ const aiKeyManager = require('./aiKeyManager');
 
 const models = {
   extraction: process.env.AI_EXTRACTION_MODEL || 'google/gemini-2.5-flash-lite',
-  generation: process.env.AI_GENERATION_MODEL || 'openrouter/free'
+  generation: process.env.AI_GENERATION_MODEL || 'google/gemini-2.5-flash'
 };
 
 const AFFORDABLE_TOKENS = /requested up to \d+ tokens, but can only afford (\d+)/i;

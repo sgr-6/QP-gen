@@ -9,7 +9,7 @@ test('defaults generation to the free router without overriding an explicit mode
   try {
     delete process.env.AI_GENERATION_MODEL;
     jest.isolateModules(() => {
-      expect(require('../src/services/structuredAiService').models.generation).toBe('openrouter/free');
+      expect(require('../src/services/structuredAiService').models.generation).toBe('google/gemini-2.5-flash');
     });
     process.env.AI_GENERATION_MODEL = 'configured/model';
     jest.isolateModules(() => {

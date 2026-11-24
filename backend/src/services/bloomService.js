@@ -11,7 +11,8 @@ const BLOOM = {
 const GENERATION_LEVELS = ['L1', 'L2', 'L3'];
 const validLevel = value => /^L[1-6]$/.test(value || '');
 const normalizeModule = value => {
-  const match = String(value || '').match(/^(?:m|module\s*|unit\s*)?(\d+)$/i);
+  // Accepts 'M1', 'Module 1', 'MODULE - 1', 'Module-1', 'Unit: 2'; rejects 'Unit -2' (reads as negative).
+  const match = String(value ?? '').trim().match(/^(?:(?:m|mod|module|unit)(?:\s*[:.#]?\s*|\s+[-–]\s+|[-–]))?(\d+)$/i);
   return match && Number(match[1]) > 0 ? `M${Number(match[1])}` : null;
 };
 

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "backend", "run", "start"],
+      "port": 5000
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-Command", "$env:NEXT_PUBLIC_API_URL='http://localhost:5000'; npm.cmd --prefix frontend run dev"],
+      "port": 3000
+    }
+  ]
+}

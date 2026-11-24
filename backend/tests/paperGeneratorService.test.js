@@ -13,12 +13,12 @@ const slotsFromPrompt = prompt => JSON.parse(prompt.match(/^SLOTS: (.+)$/m)[1]);
 const answerSlots = prompt => ({ questions: slotsFromPrompt(prompt).map(slot => ({ slotId: slot.slotId, questionText: `Calculate the current using Ohm's law for a 12 V source and 6 ohm resistor in case ${slot.slotId}.`, co: 'CO99' })) });
 const approvedBank = (marks = [5, 15, 10]) => Array.from({ length: 5 }, (_, module) => marks.map((mark, index) => ({ id: `${module}_${index}`, module: `M${module + 1}`, btl: index === 0 ? 'L1' : 'L3', marks: mark, co: 'CO1', reviewStatus: 'approved', questionText: `${index === 0 ? 'State' : 'Calculate'} the circuit quantities for supplied resistor network case ${module}_${index}.` }))).flat();
 
-function mockPaperSources(questions) {
+function mockPaperSources(questions, { syllabus = true } = {}) {
   const bank = { data: () => ({ subjectCode: 'TEST' }), ref: { collection: () => ({ get: async () => ({ size: questions.length, forEach: callback => questions.forEach(question => callback({ id: question.id, data: () => question })) }) }) } };
   const banks = { where: jest.fn().mockReturnThis(), get: async () => ({ empty: !questions.length, docs: questions.length ? [bank] : [] }) };
   db.collection.mockImplementation(name => {
     if (name === 'question_banks') return banks;
-    if (name === 'syllabi') return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ courseTitle: 'Circuits', modules: Array.from({ length: 5 }, (_, index) => ({ moduleNumber: `M${index + 1}`, topics: ['Resistor networks'] })), courseOutcomes: [] }) }) }) };
+    if (name === 'syllabi') return { doc: () => ({ get: async () => ({ exists: syllabus, data: () => ({ courseTitle: 'Circuits', modules: Array.from({ length: 5 }, (_, index) => ({ moduleNumber: `M${index + 1}`, topics: ['Resistor networks'] })), courseOutcomes: [] }) }) }) };
     if (name === 'notes') return { doc: () => ({ get: async () => ({ exists: false }) }) };
     throw new Error(`Unexpected collection ${name}`);
   });
@@ -124,7 +124,7 @@ describe('Bounded draft generation', () => {
     mockPaperSources(approvedBank());
     requestJson.mockRejectedValue(new Error('AI response was incomplete (length). No partial JSON was accepted.'));
     await expect(generatePaper('Circuits', 'semester', null, 'offline-tenant')).rejects.toThrow(/Could not write 5 required.*incomplete \(length\)/);
-    expect(requestJson.mock.calls.map(([{ prompt }]) => slotsFromPrompt(prompt).length)).toEqual([4, 1, 1, 1, 1, 1]);
+    expect(requestJson.mock.calls.map(([{ prompt }]) => slotsFromPrompt(prompt).length)).toEqual([4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
   });
 
   test('does not use pending-review questions or request AI before approval', async () => {
@@ -236,5 +236,27 @@ describe('Paper Generator Service', () => {
       expect(paper.warnings.length).toBe(1);
       expect(paper.warnings[0]).toMatch(/exceeds the 30% limit/);
     });
+  });
+});
+
+describe('Legacy banks without a syllabus', () => {
+  beforeEach(() => { jest.clearAllMocks(); requestJson.mockReset(); });
+  // Each module has only L2 questions, so every split needs new L3 questions.
+  const l2Bank = modules => modules.flatMap(module => [0, 1].map(index => ({ id: `${module}_${index}`, module: `MODULE - ${module}`, btl: 'L2', marks: 5, co: 'CO1', questionText: `Explain the resistor network behaviour for module ${module} case ${index}.` })));
+
+  test('writes missing L3 questions from the module\'s approved bank questions', async () => {
+    mockPaperSources(l2Bank([1, 2, 3, 4, 5]), { syllabus: false });
+    requestJson.mockImplementation(async ({ prompt }) => answerSlots(prompt));
+    const paper = await generatePaper('Circuits', 'internal', null, 'offline-tenant');
+    expect(paper.totalMarks).toBe(50);
+    const context = JSON.parse(requestJson.mock.calls[0][0].prompt.match(/^MODULE CONTEXT: (.+)$/m)[1]);
+    expect(context.M1.bankTopicExamples[0]).toMatch(/module 1 case 0/);
+    expect(context.M1.topics).toEqual([]);
+  });
+
+  test('names modules with no syllabus, notes or bank questions instead of calling AI', async () => {
+    mockPaperSources(l2Bank([1]), { syllabus: false });
+    await expect(generatePaper('Circuits', 'internal', null, 'offline-tenant')).rejects.toThrow(/M2 has no syllabus topics, notes or approved questions/);
+    expect(requestJson).not.toHaveBeenCalled();
   });
 });

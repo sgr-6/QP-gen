@@ -9,7 +9,7 @@ const SHAPES = {
   internal: { modules: 2, perSplit: 25, total: 50, maxL1L2: 15, duration: '90 Minutes', title: 'Internal Assessment' }
 };
 const MIN_NEW_MARKS = 3;
-const WRITE_ATTEMPTS = 2;
+const WRITE_ATTEMPTS = 3;
 const QUESTION_BATCH_SIZE = 4;
 
 const getL1L2Marks = split => split.reduce((sum, q) => sum + (['L1', 'L2'].includes(q.btl) ? Number(q.marks) : 0), 0);
@@ -85,16 +85,21 @@ function newQuestionIssue(item, seen) {
   return null;
 }
 
-function moduleContext(syllabus, notes, moduleNumber) {
+function moduleContext(syllabus, notes, moduleNumber, bank = []) {
   const mod = (syllabus?.modules || []).find(m => normalizeModule(m.moduleNumber) === moduleNumber);
   const note = notes?.[moduleNumber] || notes?.[moduleNumber.slice(1)];
-  return {
-    topics: (mod?.topics || note?.keyTopics || []).slice(0, 25).map(topic => String(topic).slice(0, 200)),
-    notes: note?.summary ? String(note.summary).slice(0, 600) : undefined
-  };
+  const topics = (mod?.topics || note?.keyTopics || []).slice(0, 25).map(topic => String(topic).slice(0, 200));
+  const context = { topics, notes: note?.summary ? String(note.summary).slice(0, 600) : undefined };
+  // Without a syllabus or notes for this module, the HOD's approved questions are the only topic source.
+  if (!topics.length && !context.notes) {
+    const examples = bank.filter(q => normalizeModule(q.module) === moduleNumber).slice(0, 10).map(q => String(q.questionText).slice(0, 200));
+    if (examples.length) context.bankTopicExamples = examples;
+  }
+  return context;
 }
+const hasModuleContext = context => Boolean(context.topics.length || context.notes || context.bankTopicExamples);
 
-async function writeMissingQuestions({ slots, courseTitle, syllabus, notes, existing }) {
+async function writeMissingQuestions({ slots, courseTitle, syllabus, notes, existing, bank = [] }) {
   const written = new Map();
   const rejections = new Map();
   const seen = new Set(existing.map(normalizeText));
@@ -111,14 +116,15 @@ async function writeMissingQuestions({ slots, courseTitle, syllabus, notes, exis
 Every question MUST be Bloom L3 (Apply): ${BLOOM.L3.definition} The student executes a known method, formula, algorithm or procedure on concrete data or a stated scenario that the question supplies.
 Rules:
 - Begin with an L3 verb: ${BLOOM.L3.verbs.join(', ')}. Do not ask the student to define, list, explain, describe, analyze, evaluate, justify or design.
+- Never begin ANY sentence with these verbs (they signal Bloom L4–L6): ${[...BLOOM.L4.verbs, ...BLOOM.L5.verbs, ...BLOOM.L6.verbs].join(", ")}. Say "Write" or "Implement" instead of "Create", "Design", "Develop" or "Construct".
 - Include the specific data, schema, code or scenario needed, scaled to the slot's marks.
-- Stay within that slot's module topics. Do not repeat or paraphrase an existing question.
+- Stay within that slot's module topics. When MODULE CONTEXT gives only bankTopicExamples, cover those same topics with a different task. Do not repeat or paraphrase an existing question.
 - "co" must be an outcome id listed for that module, or null if none fits. Never invent an outcome.
 - Keep each question under 120 words. Return question text only, no solutions, analysis, headers or a whole paper.
 - Do not put marks, numbering or Bloom labels in questionText.
 ${attempt && rejections.size ? `Previous answers were rejected: ${JSON.stringify(Object.fromEntries([...rejections].filter(([id]) => pending.some(s => s.slotId === id))))}\n` : ''}
 SLOTS: ${JSON.stringify(pending.map(({ slotId, module, marks }) => ({ slotId, module, marks })))}
-MODULE CONTEXT: ${JSON.stringify(Object.fromEntries(modules.map(m => [m, moduleContext(syllabus, notes, m)])))}
+MODULE CONTEXT: ${JSON.stringify(Object.fromEntries(modules.map(m => [m, moduleContext(syllabus, notes, m, bank)])))}
 OUTCOMES: ${JSON.stringify(outcomes)}
 EXISTING QUESTIONS: ${JSON.stringify(existing.slice(0, 40).map(text => String(text).slice(0, 150)))}
 Return only JSON: {"questions":[{"slotId":"M1-A2","questionText":"...","co":"CO1","bloomRationale":"One sentence on why this is L3."}]}`;
@@ -221,10 +227,11 @@ const generatePaper = async (courseTitle, examType = 'semester', examConfig = nu
 
   const warnings = [];
   if (slots.length) {
-    if (!syllabus && !notes) {
-      throw new Error(`The approved bank cannot fill ${slots.length} question slot(s) within the 30% L1/L2 limit, and no syllabus or notes are uploaded to write new L3 questions. Approve more L3 questions or upload the syllabus.`);
+    const uncovered = [...new Set(slots.map(s => s.module))].filter(m => !hasModuleContext(moduleContext(syllabus, notes, m, allQuestions)));
+    if (uncovered.length) {
+      throw new Error(`The approved bank cannot fill ${slots.length} question slot(s) within the 30% L1/L2 limit, and ${uncovered.join(', ')} ha${uncovered.length === 1 ? 's' : 've'} no syllabus topics, notes or approved questions to write new L3 questions from. Approve questions in ${uncovered.length === 1 ? 'that module' : 'those modules'} or upload the syllabus.`);
     }
-    const written = await writeMissingQuestions({ slots, courseTitle, syllabus, notes, existing: allQuestions.map(q => q.questionText) });
+    const written = await writeMissingQuestions({ slots, courseTitle, syllabus, notes, existing: allQuestions.map(q => q.questionText), bank: allQuestions });
     for (const slot of slots) modules.find(m => m.moduleNumber === slot.module)[`split${slot.split}`].push(written.get(slot.slotId));
     warnings.push(`${slots.length} new L3 question(s) were written by AI because the approved bank lacked enough L3 questions within the 30% L1/L2 limit (${[...new Set(slots.map(s => s.module))].join(', ')}). Review them before submitting.`);
   }

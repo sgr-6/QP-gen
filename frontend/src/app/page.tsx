@@ -89,7 +89,7 @@ export default function ExamDashboard() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'generate') {
+    if (activeTab === 'generate' || activeTab === 'upload') {
       const fetchBanks = async () => {
         try {
           const res = await api.get(`/api/question-banks`);
@@ -667,6 +667,33 @@ export default function ExamDashboard() {
                 {uploadMessage && <p role="status" style={{ color: '#276749', marginTop: 16 }}>{uploadMessage}</p>}
                 {uploadError && <p role="alert" style={{ color: '#C53030', marginTop: 16 }}>{uploadError}</p>}
               </div>
+              {banks.length > 0 && (
+                <div className="glass-panel" style={{ padding: 24, marginTop: 24 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 8, fontWeight: 600 }}>
+                    Review a saved subject
+                    <select
+                      className="pill-input"
+                      value={generation?.bankId || reviewBankId || ''}
+                      onChange={event => {
+                        const id = event.target.value || undefined;
+                        setGeneration(null);
+                        setReviewBankId(id);
+                        if (currentUser?.email) {
+                          localStorage.removeItem(`qpgen_generation_${currentUser.email}`);
+                          if (id) localStorage.setItem(`qpgen_review_bank_${currentUser.email}`, id);
+                          else localStorage.removeItem(`qpgen_review_bank_${currentUser.email}`);
+                        }
+                      }}
+                    >
+                      <option value="">Select a subject…</option>
+                      {banks.map(bank => (
+                        <option key={bank.id} value={bank.id}>{bank.courseTitle}{typeof bank.totalQuestions === 'number' ? ` (${bank.totalQuestions} questions)` : ''}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>Open any subject to correct modules, Bloom levels and marks, or approve its questions.</p>
+                </div>
+              )}
               <GenerationProgress key={generation?.jobId || reviewBankId || 'none'} generation={generation} bankId={reviewBankId} onBankDeleted={handleBankDeleted} />
             </div>
           )}
